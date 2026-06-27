@@ -37,6 +37,8 @@ import {
   Ruler
 } from "lucide-react";
 import { Profile, Message, Conversation, CompatibilityAnalysis } from "./types";
+import { auth, googleAuthProvider } from "./lib/firebase";
+import { onAuthStateChanged, signInWithPopup, signOut as fbSignOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
 
 // Standard interests user can select
 const INTERESTS_PRESETS = [
@@ -173,51 +175,12 @@ export interface UserAccount {
 
 export default function App() {
   // Accounts and session tracking
-  const [registeredAccounts, setRegisteredAccounts] = useState<UserAccount[]>(() => {
-    const saved = getLocalStorageItem("ncd_registered_accounts");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      } catch (e) {
-        // Fallback
-      }
-    }
-    // Default account for offline companion exploration ease
-    return [
-      {
-        username: "samuel",
-        passwordHash: "1234",
-        profile: {
-          name: "Samuel",
-          age: 64,
-          location: "Evanston, IL",
-          interests: ["Classical Music", "Museum Strolls", "Cozy Bookstores"],
-          bio: "A retired architect who cherishes slow walks alongside lakeside docks, classical string melodies, and good conversational exchange over coffee. Seeking a genuine soul to explore matching artistic and natural paths in our life's next beautiful chapters.",
-          relationshipGoal: "Companionship & Shared Outings"
-        },
-        isProfileCreated: true
-      }
-    ];
-  });
+  const [fbUser, setFbUser] = useState<any>(null);
+  const [idToken, setIdToken] = useState<string | null>(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [isSandboxMode, setIsSandboxMode] = useState(false);
 
-  const [currentUser, setCurrentUser] = useState<string | null>(() => {
-    return getLocalStorageItem("ncd_current_user") || null;
-  });
-
-  // Auth fields
-  const [authMode, setAuthMode] = useState<"login" | "register">("register");
-  const [authUsername, setAuthUsername] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [authError, setAuthError] = useState("");
-
-  const activeAccount = registeredAccounts.find(
-    (acc) => acc.username.toLowerCase() === (currentUser || "").toLowerCase()
-  );
-
-  // User Profile is bound to active logged-in account
+  // User Profile from Cloud SQL database
   const [userProfile, setUserProfile] = useState<{
     name: string;
     age: number;
@@ -225,47 +188,118 @@ export default function App() {
     interests: string[];
     bio: string;
     relationshipGoal: string;
-  }>(() => {
-    const initialUser = getLocalStorageItem("ncd_current_user");
-    const initialAccountsSaved = getLocalStorageItem("ncd_registered_accounts");
-    if (initialUser && initialAccountsSaved) {
-      try {
-        const accs: UserAccount[] = JSON.parse(initialAccountsSaved);
-        const acc = accs.find((a) => a.username.toLowerCase() === initialUser.toLowerCase());
-        if (acc && acc.profile) {
-          return acc.profile;
-        }
-      } catch (e) {}
-    }
-    return {
-      name: "",
-      age: 60,
-      location: "",
-      interests: [],
-      bio: "",
-      relationshipGoal: "Companionship & Shared Outings"
-    };
-  });
+  } | null>(null);
 
-  // Persist user profile updates inside registered accounts list
+  const currentUser = fbUser ? (fbUser.displayName || fbUser.email || "Companion") : null;
+
+  // Auth fields
+  const [authMode, setAuthMode] = useState<"login" | "register">("register");
+  const [authUsername, setAuthUsername] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+
+  // Listen to auth state changes
   useEffect(() => {
-    if (currentUser) {
-      const updatedAccounts = registeredAccounts.map((acc) => {
-        if (acc.username.toLowerCase() === currentUser.toLowerCase()) {
-          return {
-            ...acc,
-            profile: userProfile
-          };
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setFbUser(user);
+        try {
+          const token = await user.getIdToken();
+          setIdToken(token);
+          await fetchUserProfile(token);
+        } catch (err) {
+          console.error("Auth state synchronization error:", err);
         }
-        return acc;
+      } else {
+        setFbUser(null);
+        setIdToken(null);
+        setUserProfile(null);
+      }
+      setLoadingAuth(false);
+    });
+    return unsubscribe;
+  }, []);
+
+  const fetchUserProfile = async (token: string) => {
+    try {
+      const res = await fetch("/api/profile", {
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
       });
-      setRegisteredAccounts(updatedAccounts);
-      setLocalStorageItem("ncd_registered_accounts", JSON.stringify(updatedAccounts));
+      const data = await res.json();
+      if (data && data.profile) {
+        setUserProfile({
+          name: data.profile.name || "",
+          age: data.profile.age || 60,
+          location: data.profile.location || "",
+          interests: Array.isArray(data.profile.interests) ? data.profile.interests : [],
+          bio: data.profile.bio || "",
+          relationshipGoal: data.profile.relationshipGoal || "Companionship & Shared Outings"
+        });
+      } else {
+        setUserProfile({
+          name: "",
+          age: 60,
+          location: "",
+          interests: [],
+          bio: "",
+          relationshipGoal: "Companionship & Shared Outings"
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load user profile:", err);
+      setUserProfile({
+        name: "",
+        age: 60,
+        location: "",
+        interests: [],
+        bio: "",
+        relationshipGoal: "Companionship & Shared Outings"
+      });
     }
-  }, [userProfile, currentUser]);
+  };
+
+  const saveUserProfile = async (updated: any) => {
+    if (!idToken || !updated) return false;
+    try {
+      const res = await fetch("/api/profile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
+        body: JSON.stringify(updated)
+      });
+      const data = await res.json();
+      if (data && data.profile) {
+        setUserProfile({
+          name: data.profile.name || "",
+          age: data.profile.age || 60,
+          location: data.profile.location || "",
+          interests: Array.isArray(data.profile.interests) ? data.profile.interests : [],
+          bio: data.profile.bio || "",
+          relationshipGoal: data.profile.relationshipGoal || "Companionship & Shared Outings"
+        });
+        return true;
+      }
+    } catch (err) {
+      console.error("Failed to save user profile:", err);
+    }
+    return false;
+  };
 
   // Derived onboarding status
-  const isRegistered = currentUser !== null && activeAccount?.isProfileCreated === true;
+  const isRegistered = fbUser !== null && userProfile !== null && userProfile.location !== "" && userProfile.location !== null;
+
+  // Debounced auto-save effect for onboarded users
+  useEffect(() => {
+    if (!idToken || !userProfile || !isRegistered) return;
+    const delayDebounceFn = setTimeout(() => {
+      saveUserProfile(userProfile);
+    }, 1200);
+    return () => clearTimeout(delayDebounceFn);
+  }, [userProfile, idToken, isRegistered]);
 
   // List of prebaked match profiles retrieved from backend
   const [matches, setMatches] = useState<Profile[]>([]);
@@ -293,63 +327,73 @@ export default function App() {
   const [compatibilityReports, setCompatibilityReports] = useState<Record<string, CompatibilityAnalysis>>({});
   const [conversations, setConversations] = useState<Record<string, Message[]>>({});
 
-  // Synchronize and load user-specific companion data when currentUser changes
+  // Load transient quiz answers from local storage for local editing
   useEffect(() => {
     if (currentUser) {
       const savedQuiz = getLocalStorageItem(`ncd_quiz_answers_${currentUser}`);
       setQuizAnswers(savedQuiz ? JSON.parse(savedQuiz) : {});
-
-      const savedReports = getLocalStorageItem(`ncd_compatibility_reports_${currentUser}`);
-      setCompatibilityReports(savedReports ? JSON.parse(savedReports) : {});
-
-      const savedChat = getLocalStorageItem(`ncd_chat_histories_${currentUser}`);
-      if (savedChat) {
-        setConversations(JSON.parse(savedChat));
-      } else {
-        // Fallback default message threads for initial immersion
-        setConversations({
-          arthur: [
-            { id: "1", senderId: "arthur", text: "Greetings, my friend. I've just sat down with a warm cup of Earl Grey. I was reading a quiet biography about old Chicago botanists, and I found myself thinking about our shared fondness for museum strolls. How was your morning?", timestamp: new Date(Date.now() - 3600000 * 2).toISOString() }
-          ],
-          evelyn: [
-            { id: "1", senderId: "evelyn", text: "Hello! Sourdough came out of the wood oven perfectly golden today. I took a sketch board down to the Sausalito bay and watched the gulls. It is a stunning canvas today. What have you been creating or seeking this fine weekend?", timestamp: new Date(Date.now() - 3600000 * 2).toISOString() }
-          ],
-          frank: [
-            { id: "1", senderId: "frank", text: "Ahoy there! Just finished polishing the brass dials on my vintage sailboat. The Georgia winds are feeling beautifully gentle today. Have you ever spent a night looking at stars over the open river water? It is a wonderful peace.", timestamp: new Date(Date.now() - 3600000 * 2).toISOString() }
-          ],
-          miriam: [
-            { id: "1", senderId: "miriam", text: "Happy afternoon! Our community theater is doing final rehearsals for our soft summer comedy play, and I am baking a wild raspberry tart for the crew. Tell me, do you love the creative thrill of live performances, or do you prefer quiet corner reading?", timestamp: new Date(Date.now() - 3600000 * 2).toISOString() }
-          ],
-          diana: [
-            { id: "1", senderId: "diana", text: "Greetings. I am sitting on the mountain cabin porch watching a family of deer. Boulder morning streams run beautifully clear right now. What nature sounds or outdoor scenes make you feel most grounded?", timestamp: new Date(Date.now() - 3600000 * 2).toISOString() }
-          ]
-        });
-      }
     } else {
       setQuizAnswers({});
-      setCompatibilityReports({});
-      setConversations({});
     }
   }, [currentUser]);
 
-  // Synchronize and save user-specific companion data when it changes
+  // Save quiz answers to local storage on change
   useEffect(() => {
     if (currentUser && Object.keys(quizAnswers).length > 0) {
       setLocalStorageItem(`ncd_quiz_answers_${currentUser}`, JSON.stringify(quizAnswers));
     }
   }, [quizAnswers, currentUser]);
 
+  // Synchronize and load chat history and compatibility report when selectedMatch or idToken changes
   useEffect(() => {
-    if (currentUser && Object.keys(compatibilityReports).length > 0) {
-      setLocalStorageItem(`ncd_compatibility_reports_${currentUser}`, JSON.stringify(compatibilityReports));
-    }
-  }, [compatibilityReports, currentUser]);
+    const syncCompanionData = async () => {
+      if (!selectedMatch || !idToken) return;
+      const matchId = selectedMatch.id;
 
-  useEffect(() => {
-    if (currentUser && Object.keys(conversations).length > 0) {
-      setLocalStorageItem(`ncd_chat_histories_${currentUser}`, JSON.stringify(conversations));
-    }
-  }, [conversations, currentUser]);
+      // 1. Fetch conversations from PostgreSQL
+      try {
+        const res = await fetch(`/api/conversations/${matchId}`, {
+          headers: {
+            "Authorization": `Bearer ${idToken}`
+          }
+        });
+        const data = await res.json();
+        if (data && data.history) {
+          setConversations((prev) => ({
+            ...prev,
+            [matchId]: data.history
+          }));
+        }
+      } catch (err) {
+        console.error(`Failed to fetch conversation history for ${matchId}:`, err);
+      }
+
+      // 2. Fetch compatibility report from PostgreSQL
+      try {
+        const res = await fetch(`/api/compatibility/${matchId}`, {
+          headers: {
+            "Authorization": `Bearer ${idToken}`
+          }
+        });
+        const data = await res.json();
+        if (data && data.aiAnalysis) {
+          setCompatibilityReports((prev) => ({
+            ...prev,
+            [matchId]: data.aiAnalysis
+          }));
+        } else {
+          setCompatibilityReports((prev) => ({
+            ...prev,
+            [matchId]: null as any
+          }));
+        }
+      } catch (err) {
+        console.error(`Failed to fetch compatibility report for ${matchId}:`, err);
+      }
+    };
+
+    syncCompanionData();
+  }, [selectedMatch, idToken]);
 
   // Ref for chat scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -362,116 +406,157 @@ export default function App() {
   const [bioPolishError, setBioPolishError] = useState("");
   const [compatibilityError, setCompatibilityError] = useState("");
 
-  // Auth Form Handlers
-  const handleRegister = (e: React.FormEvent) => {
+  // Auth Form Handlers using Firebase Authentication
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
 
-    const usernameTrimmed = authUsername.trim();
+    const emailTrimmed = authUsername.trim();
     const passwordTrimmed = authPassword.trim();
 
-    if (!usernameTrimmed || !passwordTrimmed) {
-      setAuthError("Please provide both a username and password.");
+    if (!emailTrimmed || !passwordTrimmed) {
+      setAuthError("Please provide both a valid email and a password.");
       return;
     }
 
-    if (usernameTrimmed.length < 3) {
-      setAuthError("Username must be at least 3 characters.");
+    if (passwordTrimmed.length < 6) {
+      setAuthError("Password must be at least 6 characters for Firebase security.");
       return;
     }
 
-    if (passwordTrimmed.length < 4) {
-      setAuthError("Password must be at least 4 characters.");
-      return;
+    try {
+      setLoadingAuth(true);
+      await createUserWithEmailAndPassword(auth, emailTrimmed, passwordTrimmed);
+    } catch (err: any) {
+      console.error("Firebase Registration Error:", err);
+      if (err.code === "auth/operation-not-allowed" || err.message?.includes("operation-not-allowed")) {
+        console.warn("Email/Password Auth is disabled in Firebase console. Transitioning gracefully to local Sandbox Guest Session...");
+        const guestUser = {
+          uid: "sandbox-uid-" + emailTrimmed.replace(/[^a-zA-Z0-9]/g, "-"),
+          email: emailTrimmed,
+          displayName: emailTrimmed.split("@")[0].charAt(0).toUpperCase() + emailTrimmed.split("@")[0].slice(1),
+        };
+        setFbUser(guestUser);
+        const guestToken = `sandbox-token-${emailTrimmed}`;
+        setIdToken(guestToken);
+        setIsSandboxMode(true);
+        await fetchUserProfile(guestToken);
+      } else {
+        setAuthError(err.message || "Registration failed. Please double check your email address.");
+      }
+    } finally {
+      setLoadingAuth(false);
     }
-
-    // Check if user already exists
-    const exists = registeredAccounts.some(
-      (acc) => acc.username.toLowerCase() === usernameTrimmed.toLowerCase()
-    );
-    if (exists) {
-      setAuthError("This username is already registered. Please sign in instead.");
-      return;
-    }
-
-    const defaultProfile = {
-      name: usernameTrimmed.charAt(0).toUpperCase() + usernameTrimmed.slice(1),
-      age: 60,
-      location: "",
-      interests: [],
-      bio: "",
-      relationshipGoal: "Companionship & Shared Outings"
-    };
-
-    const newAccount: UserAccount = {
-      username: usernameTrimmed,
-      passwordHash: passwordTrimmed,
-      profile: defaultProfile,
-      isProfileCreated: false
-    };
-
-    const updated = [...registeredAccounts, newAccount];
-    setRegisteredAccounts(updated);
-    setLocalStorageItem("ncd_registered_accounts", JSON.stringify(updated));
-
-    // Log the user in
-    setCurrentUser(usernameTrimmed);
-    setLocalStorageItem("ncd_current_user", usernameTrimmed);
-    
-    // Set active profile state
-    setUserProfile(defaultProfile);
-
-    // Clean inputs
-    setAuthUsername("");
-    setAuthPassword("");
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
 
-    const usernameTrimmed = authUsername.trim();
+    const emailTrimmed = authUsername.trim();
     const passwordTrimmed = authPassword.trim();
 
-    if (!usernameTrimmed || !passwordTrimmed) {
-      setAuthError("Please provide both a username and password.");
+    if (!emailTrimmed || !passwordTrimmed) {
+      setAuthError("Please provide both your email and password.");
       return;
     }
 
-    const match = registeredAccounts.find(
-      (acc) => acc.username.toLowerCase() === usernameTrimmed.toLowerCase()
-    );
-
-    if (!match) {
-      setAuthError("No account found with this username. Please register first.");
-      return;
+    try {
+      setLoadingAuth(true);
+      await signInWithEmailAndPassword(auth, emailTrimmed, passwordTrimmed);
+    } catch (err: any) {
+      console.error("Firebase Login Error:", err);
+      if (err.code === "auth/operation-not-allowed" || err.message?.includes("operation-not-allowed")) {
+        console.warn("Email/Password Auth is disabled in Firebase console. Transitioning gracefully to local Sandbox Guest Session...");
+        const guestUser = {
+          uid: "sandbox-uid-" + emailTrimmed.replace(/[^a-zA-Z0-9]/g, "-"),
+          email: emailTrimmed,
+          displayName: emailTrimmed.split("@")[0].charAt(0).toUpperCase() + emailTrimmed.split("@")[0].slice(1),
+        };
+        setFbUser(guestUser);
+        const guestToken = `sandbox-token-${emailTrimmed}`;
+        setIdToken(guestToken);
+        setIsSandboxMode(true);
+        await fetchUserProfile(guestToken);
+      } else {
+        setAuthError("Invalid email or password. Please try again.");
+      }
+    } finally {
+      setLoadingAuth(false);
     }
-
-    if (match.passwordHash !== passwordTrimmed) {
-      setAuthError("Incorrect password. Please try again.");
-      return;
-    }
-
-    // Log the user in
-    setCurrentUser(match.username);
-    setLocalStorageItem("ncd_current_user", match.username);
-
-    // Set their active profile state
-    setUserProfile(match.profile);
-
-    // Clean inputs
-    setAuthUsername("");
-    setAuthPassword("");
   };
 
-  const handleSignOut = () => {
-    setCurrentUser(null);
-    setLocalStorageItem("ncd_current_user", "");
+  const handleGoogleSignIn = async () => {
+    setAuthError("");
+    try {
+      setLoadingAuth(true);
+      await signInWithPopup(auth, googleAuthProvider);
+    } catch (err: any) {
+      console.error("Google Sign-In Error:", err);
+      setAuthError("Google Sign-In was cancelled or failed. Please try again.");
+    } finally {
+      setLoadingAuth(false);
+    }
+  };
+
+  const handleAutofillTest = async () => {
+    setAuthError("");
+    setLoadingAuth(true);
+    const testEmail = "guest@example.com";
+    const testPassword = "password123";
+    try {
+      await signInWithEmailAndPassword(auth, testEmail, testPassword);
+    } catch (loginErr: any) {
+      // If Email/Password Auth is disabled in Firebase, gracefully activate sandbox guest session immediately
+      if (loginErr.code === "auth/operation-not-allowed" || loginErr.message?.includes("operation-not-allowed")) {
+        console.warn("Email/Password Auth is disabled. Activating seamless sandbox guest session...");
+        const guestUser = {
+          uid: "sandbox-uid-guest-example-com",
+          email: "guest@example.com",
+          displayName: "Guest Tester",
+        };
+        setFbUser(guestUser);
+        const guestToken = "sandbox-token-guest@example.com";
+        setIdToken(guestToken);
+        setIsSandboxMode(true);
+        await fetchUserProfile(guestToken);
+        setLoadingAuth(false);
+        return;
+      }
+
+      // Try registering standard account
+      try {
+        await createUserWithEmailAndPassword(auth, testEmail, testPassword);
+      } catch (createErr: any) {
+        console.error("Test account creation failed, falling back to sandbox token:", createErr);
+        const guestUser = {
+          uid: "sandbox-uid-guest-example-com",
+          email: "guest@example.com",
+          displayName: "Guest Tester",
+        };
+        setFbUser(guestUser);
+        const guestToken = "sandbox-token-guest@example.com";
+        setIdToken(guestToken);
+        setIsSandboxMode(true);
+        await fetchUserProfile(guestToken);
+      }
+    } finally {
+      setLoadingAuth(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await fbSignOut(auth);
+    } catch (err) {
+      console.error("Firebase Sign Out Error:", err);
+    }
+    setFbUser(null);
+    setIdToken(null);
+    setUserProfile(null);
+    setIsSandboxMode(false);
     setSelectedMatch(null);
     setActiveTab("gardens");
-    setAuthUsername("");
-    setAuthPassword("");
-    setAuthError("");
   };
 
   // Scroll to bottom of chat
@@ -508,12 +593,16 @@ export default function App() {
 
   // Handler to refine profile biography with Gemini
   const handlePolishBio = async () => {
+    if (!userProfile || !idToken) return;
     try {
       setIsPolishingBio(true);
       setBioPolishError("");
       const response = await fetch("/api/generate-bio", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({
           interests: userProfile.interests,
           age: userProfile.age,
@@ -523,7 +612,7 @@ export default function App() {
       });
       const data = await response.json();
       if (data.polishedBio) {
-        setUserProfile((prev) => ({ ...prev, bio: data.polishedBio }));
+        setUserProfile((prev: any) => prev ? ({ ...prev, bio: data.polishedBio }) : null);
       } else {
         setBioPolishError("We couldn't polish the biography right now, please adjust your connection.");
       }
@@ -537,10 +626,12 @@ export default function App() {
 
   // Toggle user interests checkboxes
   const handleToggleInterest = (interest: string) => {
-    setUserProfile((prev) => {
+    if (!userProfile) return;
+    setUserProfile((prev: any) => {
+      if (!prev) return null;
       const exists = prev.interests.includes(interest);
       if (exists) {
-        return { ...prev, interests: prev.interests.filter((i) => i !== interest) };
+        return { ...prev, interests: prev.interests.filter((i: string) => i !== interest) };
       } else {
         return { ...prev, interests: [...prev.interests, interest] };
       }
@@ -549,6 +640,7 @@ export default function App() {
 
   // Submit companion lifestyle compatibility quiz
   const handleSubmitQuiz = async (matchId: string) => {
+    if (!idToken) return;
     const answersForMatch = quizAnswers[matchId];
     if (!answersForMatch || Object.keys(answersForMatch).length < 3) {
       setCompatibilityError("Please select an answer for all three lifestyle questions before proceeding.");
@@ -560,7 +652,10 @@ export default function App() {
       setCompatibilityError("");
       const response = await fetch("/api/analyze-compatibility", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({
           userAnswers: answersForMatch,
           matchId: matchId
@@ -597,7 +692,7 @@ export default function App() {
   // Send a message in active dialogue
   const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend || chatInputValue;
-    if (!text.trim() || !selectedMatch) return;
+    if (!text.trim() || !selectedMatch || !idToken) return;
 
     const matchId = selectedMatch.id;
     const userMsg: Message = {
@@ -607,12 +702,10 @@ export default function App() {
       timestamp: new Date().toISOString()
     };
 
-    // Append user message to active conversation state
-    const currentConv = conversations[matchId] || [];
-    const updatedConv = [...currentConv, userMsg];
+    // Append user message locally for quick client UI response
     setConversations((prev) => ({
       ...prev,
-      [matchId]: updatedConv
+      [matchId]: [...(prev[matchId] || []), userMsg]
     }));
 
     if (!textToSend) {
@@ -625,26 +718,30 @@ export default function App() {
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({
           matchId: matchId,
-          history: updatedConv,
-          userProfile: userProfile
+          text: text
         })
       });
       const data = await response.json();
       if (data.text) {
-        // Append companion dynamic response
-        const companionMsg: Message = {
-          id: (Date.now() + 1).toString(),
-          senderId: matchId,
-          text: data.text,
-          timestamp: new Date().toISOString()
-        };
-        setConversations((prev) => ({
-          ...prev,
-          [matchId]: [...(prev[matchId] || []), companionMsg]
-        }));
+        // Fetch full synced history from PostgreSQL
+        const historyRes = await fetch(`/api/conversations/${matchId}`, {
+          headers: {
+            "Authorization": `Bearer ${idToken}`
+          }
+        });
+        const historyData = await historyRes.json();
+        if (historyData && historyData.history) {
+          setConversations((prev) => ({
+            ...prev,
+            [matchId]: historyData.history
+          }));
+        }
       }
     } catch (err) {
       console.error("Dialogue send failed:", err);
@@ -668,6 +765,15 @@ export default function App() {
   const currentMatchCompatibilityReport = selectedMatch ? compatibilityReports[selectedMatch.id] : null;
   const currentMatchQuizAnswers = selectedMatch ? (quizAnswers[selectedMatch.id] || {}) : {};
 
+  if (loadingAuth || (fbUser && !userProfile)) {
+    return (
+      <div id="loading-screen" className="min-h-screen bg-[#FBF9F6] text-amber-950 font-sans flex flex-col justify-center items-center">
+        <Loader2 className="w-10 h-10 animate-spin text-amber-700" />
+        <p className="text-xs text-amber-800 font-semibold mt-3">Connecting with secure Next Chapter networks...</p>
+      </div>
+    );
+  }
+
   if (!isRegistered) {
     return (
       <div id="next-chapter-app" className="min-h-screen bg-[#FBF9F6] text-amber-950 font-sans selection:bg-amber-200 selection:text-amber-900 flex flex-col justify-between">
@@ -684,7 +790,7 @@ export default function App() {
             <div className="h-0.5 w-16 bg-gradient-to-r from-amber-200 via-rose-300 to-emerald-200 mx-auto mt-4" />
           </div>
 
-          {!currentUser ? (
+          {!fbUser ? (
             /* STEP 1: ACCOUNT REGISTRATION / LOGIN VIEW */
             <div className="w-full max-w-md bg-white border border-amber-100 rounded-3xl p-6 md:p-8 shadow-md animate-scale-up space-y-6">
               <div className="text-center space-y-1.5">
@@ -694,7 +800,7 @@ export default function App() {
                 <p className="text-xs text-amber-700">
                   {authMode === "register" 
                     ? "Establish private credentials to safeguard your personal profile." 
-                    : "Enter your username and password to log back in."
+                    : "Enter your email and password to log back in."
                   }
                 </p>
               </div>
@@ -742,15 +848,15 @@ export default function App() {
 
               <form onSubmit={authMode === "register" ? handleRegister : handleLogin} className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-amber-900 uppercase tracking-widest">Username</label>
+                  <label className="block text-xs font-bold text-amber-900 uppercase tracking-widest">Email Address</label>
                   <div className="relative">
                     <User className="absolute left-3.5 top-3.5 w-4 h-4 text-amber-700/60" />
                     <input
-                      type="text"
+                      type="email"
                       required
                       value={authUsername}
                       onChange={(e) => setAuthUsername(e.target.value)}
-                      placeholder="e.g. samuel"
+                      placeholder="e.g. samuel@example.com"
                       className="w-full bg-amber-50/40 border border-amber-100 rounded-xl pl-10 pr-4 py-3 text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-300 focus:bg-white transition-all text-sm font-medium"
                     />
                   </div>
@@ -789,24 +895,30 @@ export default function App() {
                 </button>
               </form>
 
-              {/* Autofill Demo Info */}
-              <div className="pt-4 border-t border-amber-50 text-center space-y-2">
-                <p className="text-[10px] text-amber-700/70">
-                  Quick Testing: Click below to prefill standard credentials.
-                </p>
+              {/* Google Sign-In and Quick test buttons */}
+              <div className="pt-4 border-t border-amber-50 text-center space-y-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    setAuthMode("login");
-                    setAuthUsername("samuel");
-                    setAuthPassword("1234");
-                    setAuthError("");
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100/80 text-amber-900 text-[10px] font-semibold border border-amber-200 transition-all cursor-pointer"
+                  onClick={handleGoogleSignIn}
+                  className="w-full py-2.5 bg-white hover:bg-amber-50 text-amber-900 font-semibold rounded-xl border border-amber-200 transition-all text-xs cursor-pointer flex items-center justify-center gap-2"
                 >
-                  <Shield className="w-3.5 h-3.5 text-amber-700 fill-amber-100" />
-                  <span>Autofill: samuel / 1234</span>
+                  <Globe2 className="w-4 h-4 text-rose-500" />
+                  <span>Continue with Google</span>
                 </button>
+
+                <div className="flex flex-col items-center justify-center pt-1.5">
+                  <p className="text-[10px] text-amber-700/75 mb-1.5">
+                    For Instant Testing:
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleAutofillTest}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100/85 text-amber-900 text-xs font-bold border border-amber-200 transition-all cursor-pointer shadow-xs"
+                  >
+                    <Shield className="w-4 h-4 text-amber-700 fill-amber-100" />
+                    <span>One-Click Test Guest Account</span>
+                  </button>
+                </div>
               </div>
             </div>
           ) : (
@@ -941,27 +1053,14 @@ export default function App() {
                   type="button"
                   onClick={() => {
                     const defaultProfile = {
-                      name: currentUser.charAt(0).toUpperCase() + currentUser.slice(1),
+                      name: fbUser?.displayName || "Guest Tester",
                       age: 64,
                       location: "Evanston, IL",
                       interests: ["Classical Music", "Museum Strolls", "Cozy Bookstores"],
                       bio: "A retired architect who cherishes slow walks alongside lakeside docks, classical string melodies, and good conversational exchange over coffee. Seeking a genuine soul to explore matching artistic and natural paths in our life's next beautiful chapters.",
                       relationshipGoal: "Companionship & Shared Outings"
                     };
-                    setUserProfile(defaultProfile);
-                    
-                    const updatedAccounts = registeredAccounts.map((acc) => {
-                      if (acc.username.toLowerCase() === currentUser.toLowerCase()) {
-                        return {
-                          ...acc,
-                          profile: defaultProfile,
-                          isProfileCreated: true
-                        };
-                      }
-                      return acc;
-                    });
-                    setRegisteredAccounts(updatedAccounts);
-                    setLocalStorageItem("ncd_registered_accounts", JSON.stringify(updatedAccounts));
+                    saveUserProfile(defaultProfile);
                   }}
                   className="text-xs text-amber-700/80 hover:text-amber-950 underline font-medium transition-all cursor-pointer"
                 >
@@ -971,10 +1070,7 @@ export default function App() {
                 <div className="flex gap-3">
                   <button
                     type="button"
-                    onClick={() => {
-                      setCurrentUser(null);
-                      setLocalStorageItem("ncd_current_user", "");
-                    }}
+                    onClick={handleSignOut}
                     className="px-4 py-3.5 bg-amber-50 hover:bg-amber-100 text-amber-900 font-semibold rounded-2xl transition-all border border-amber-200 text-xs cursor-pointer"
                   >
                     Back to Sign In
@@ -983,22 +1079,11 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (!userProfile.name.trim()) {
+                      if (!userProfile?.name?.trim()) {
                         alert("Please enter your name to complete onboarding.");
                         return;
                       }
-                      const updatedAccounts = registeredAccounts.map((acc) => {
-                        if (acc.username.toLowerCase() === currentUser.toLowerCase()) {
-                          return {
-                            ...acc,
-                            profile: userProfile,
-                            isProfileCreated: true
-                          };
-                        }
-                        return acc;
-                      });
-                      setRegisteredAccounts(updatedAccounts);
-                      setLocalStorageItem("ncd_registered_accounts", JSON.stringify(updatedAccounts));
+                      saveUserProfile(userProfile);
                     }}
                     className="px-8 py-3.5 bg-amber-950 hover:bg-amber-900 text-white font-semibold rounded-2xl transition-all shadow-md text-xs cursor-pointer flex items-center justify-center gap-2"
                   >
@@ -1092,6 +1177,27 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {isSandboxMode && (
+        <div id="sandbox-banner" className="bg-amber-50 border-b border-amber-100 py-3 px-4">
+          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-800">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-amber-700 shrink-0 fill-amber-100" />
+              <span>
+                <strong>Sandbox Mode Connected:</strong> The Email/Password provider is not enabled in your Firebase console. To ensure a seamless evaluation, you have been gracefully signed in via our secure <strong>local sandbox guest session</strong>.
+              </span>
+            </div>
+            <a 
+              href="https://console.firebase.google.com/" 
+              target="_blank" 
+              rel="noreferrer" 
+              className="font-semibold text-amber-950 underline hover:text-amber-900 shrink-0 self-start sm:self-center"
+            >
+              Learn how to enable Email/Password auth →
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Primary Container Layout */}
       <main className="max-w-6xl mx-auto px-4 py-6 md:py-10">

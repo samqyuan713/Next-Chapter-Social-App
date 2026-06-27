@@ -9,6 +9,10 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
+import { db, companions, users, messages, compatibility } from "./src/db/index.ts";
+import { eq, and, desc } from "drizzle-orm";
+import { requireAuth, AuthRequest } from "./src/middleware/auth.ts";
+
 dotenv.config();
 
 const app = express();
@@ -35,7 +39,7 @@ function getGeminiClient(): GoogleGenAI | null {
   return aiClient;
 }
 
-// Prebaked high-fidelity mature match profiles for "Next Chapter Dating"
+// Prebaked high-fidelity mature match profiles for "Next Chapter Dating" (used as fallback and initial seeding reference)
 const MATCH_PROFILES = [
   {
     id: "arthur",
@@ -240,6 +244,20 @@ const PERSONA_PROMPTS: Record<string, string> = {
   sanjay: "You are Sanjay, a 65-year-old retired Ayurvedic wellness consultant from Mumbai. You speak with mindful compassion, grounded wisdom, and holistic warmth. You love yoga, herb gardening, biographies, and brewing spiced chai from scratch. Keep replies thoughtful, warm, and comforting, around 2-3 sentences. Always stay in character."
 };
 
+const WELCOME_MESSAGES: Record<string, string> = {
+  arthur: "Greetings, my friend. I've just sat down with a warm cup of Earl Grey. I was reading a quiet biography about old Chicago botanists, and I found myself thinking about our shared fondness for museum strolls. How was your morning?",
+  evelyn: "Hello! Sourdough came out of the wood oven perfectly golden today. I took a sketch board down to the Sausalito bay and watched the gulls. It is a stunning canvas today. What have you been creating or seeking this fine weekend?",
+  frank: "Ahoy there! Just finished polishing the brass dials on my vintage sailboat. The Georgia winds are feeling beautifully gentle today. Have you ever spent a night looking at stars over the open river water? It is a wonderful peace.",
+  miriam: "Happy afternoon! Our community theater is doing final rehearsals for our soft summer comedy play, and I am baking a wild raspberry tart for the crew. Tell me, do you love the creative thrill of live performances, or do you prefer quiet corner reading?",
+  diana: "Greetings. I am sitting on the mountain cabin porch watching a family of deer. Boulder morning streams run beautifully clear right now. What nature sounds or outdoor scenes make you feel most grounded?",
+  clara: "Just as every seedling takes its time to root, meaningful companionship grows step-by-step. I'd love to sketch flowers with you. What colors represent your current chapter of life?",
+  eleanor: "A beautiful violin concerto requires patience and alignment. I find the same is true for conversations that touch the soul. What is your go-to comfort read?",
+  grace: "Nothing beats the crackling crust of a freshly baked sourdough! I'd love to bake a fresh loaf for us to share. What's your favorite way to stay active?",
+  takashi: "In traditional architecture, we design spaces that let the natural world breathe. I think relationships should be the same. Tell me, what brings peace to your mind?",
+  meiling: "The sweet fragrance of orchids always puts me in a peaceful mood! I have over twenty varieties in my garden here. What's the most exotic dish you've ever tasted on your travels?",
+  sanjay: "Ayurveda teaches us that wellness comes from natural alignment with the seasons. Mindful companionship is a major part of that wellness. How do you like to start your mornings?"
+};
+
 // Simulated responses if GEMINI_API_KEY is not configured
 const FALLBACK_RESPONSES: Record<string, string[]> = {
   arthur: [
@@ -310,86 +328,242 @@ const FALLBACK_RESPONSES: Record<string, string[]> = {
   ]
 };
 
-// Match profiles API
-app.get("/api/matches", (req, res) => {
+// ----------------------------------------------------
+// API ROUTES
+// ----------------------------------------------------
+
+// 1. Get Match profiles (dynamic from DB, falls back to prebaked)
+app.get("/api/matches", async (req, res) => {
+  try {
+    const list = await db.select().from(companions);
+    if (list && list.length > 0) {
+      return res.json({ status: "success", matches: list });
+    }
+  } catch (error) {
+    console.error("Failed to query companions from DB, falling back to static profiles:", error);
+  }
   res.json({ status: "success", matches: MATCH_PROFILES });
 });
 
-// Chat endpoint with persona-aware API calls
-app.post("/api/chat", async (req, res) => {
-  const { matchId, history, userProfile } = req.body;
+// 2. Get active user's profile
+app.get("/api/profile", requireAuth, (req: AuthRequest, res) => {
+  res.json({ status: "success", profile: req.userDb });
+});
 
+// 3. Save / Update active user's profile
+app.post("/api/profile", requireAuth, async (req: AuthRequest, res) => {
+  const { name, age, location, relationshipGoal, bio, interests, values, height, weight, gender } = req.body;
+  if (!req.userDb) {
+    return res.status(404).json({ error: "User profile not found." });
+  }
+
+  try {
+    const updated = await db.update(users)
+      .set({
+        name: name || req.userDb.name,
+        age: age ? Number(age) : req.userDb.age,
+        location: location !== undefined ? location : req.userDb.location,
+        relationshipGoal: relationshipGoal !== undefined ? relationshipGoal : req.userDb.relationshipGoal,
+        bio: bio !== undefined ? bio : req.userDb.bio,
+        interests: interests || req.userDb.interests,
+        values: values || req.userDb.values,
+        height: height ? Number(height) : req.userDb.height,
+        weight: weight ? Number(weight) : req.userDb.weight,
+        gender: gender || req.userDb.gender,
+      })
+      .where(eq(users.id, req.userDb.id))
+      .returning();
+
+    res.json({ status: "success", profile: updated[0] });
+  } catch (error) {
+    console.error("Failed to update user profile in database:", error);
+    res.status(500).json({ error: "Database profile update failed." });
+  }
+});
+
+// 4. Get persistent conversation history for a companion
+app.get("/api/conversations/:matchId", requireAuth, async (req: AuthRequest, res) => {
+  const { matchId } = req.params;
+  if (!req.userDb) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    let historyList = await db.select()
+      .from(messages)
+      .where(and(eq(messages.userId, req.userDb.id), eq(messages.matchId, matchId)))
+      .orderBy(messages.createdAt);
+
+    // Seed conversation with default welcome message if it is completely empty
+    if (historyList.length === 0) {
+      const welcomeText = WELCOME_MESSAGES[matchId] || "Hello, I am looking forward to our next chapter together!";
+      const seeded = await db.insert(messages)
+        .values({
+          userId: req.userDb.id,
+          matchId,
+          senderId: matchId,
+          text: welcomeText,
+        })
+        .returning();
+      historyList = seeded;
+    }
+
+    // Format for client-side consuming: convert DB schema to the simpler client-side Message structure
+    const formattedHistory = historyList.map(msg => ({
+      id: msg.id.toString(),
+      senderId: msg.senderId,
+      text: msg.text,
+      timestamp: msg.createdAt ? msg.createdAt.toISOString() : new Date().toISOString()
+    }));
+
+    res.json({ status: "success", history: formattedHistory });
+  } catch (error) {
+    console.error(`Failed to fetch chat history for ${matchId}:`, error);
+    res.status(500).json({ error: "Failed to load conversation history from database" });
+  }
+});
+
+// 5. Post message and get companion-aware response
+app.post("/api/chat", requireAuth, async (req: AuthRequest, res) => {
+  const { matchId, text } = req.body;
+  if (!req.userDb) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (!matchId || !text) {
+    return res.status(400).json({ error: "matchId and text are required" });
+  }
+
+  try {
+    // 1. Persist the user's message in database
+    await db.insert(messages).values({
+      userId: req.userDb.id,
+      matchId,
+      senderId: "user",
+      text,
+    });
+
+    // 2. Fetch recent conversation history to build the system instruction context
+    const historyList = await db.select()
+      .from(messages)
+      .where(and(eq(messages.userId, req.userDb.id), eq(messages.matchId, matchId)))
+      .orderBy(messages.createdAt);
+
+    // Limit to last 10 messages to protect standard rate limits and token windows
+    const formattedHistory = historyList.slice(-10).map((msg) => ({
+      role: msg.senderId === "user" ? "user" : "model",
+      parts: [{ text: msg.text }]
+    }));
+
+    const personaContext = PERSONA_PROMPTS[matchId] || "You are a warm, kind mature dating companion for 50+ singles.";
+    const fallbackList = FALLBACK_RESPONSES[matchId] || ["How interesting! Please tell me more, my friend."];
+
+    const userProfile = req.userDb;
+    const userContextStr = userProfile
+      ? `\nUser Profile for matching reference: Name: "${userProfile.name}", Age: ${userProfile.age || "unknown"}, Bio: "${userProfile.bio || ""}", Interests: ${Array.isArray(userProfile.interests) ? userProfile.interests.join(", ") : ""}.`
+      : "";
+
+    let replyText = "";
+    let isSimulated = false;
+
+    try {
+      const ai = getGeminiClient();
+      if (!ai) {
+        throw new Error("Gemini client offline or API key missing.");
+      }
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: formattedHistory,
+        config: {
+          systemInstruction: `${personaContext}${userContextStr}\nKeep response to at most 3 warm sentences. Support second-chance romance, friendly companionship, or warm travel sharing. Do NOT act like a generic AI or say you are an AI assistant. Speak directly as that person.`,
+          temperature: 0.82
+        }
+      });
+      replyText = response.text || "I found myself thinking of the beauty of this day, but lost my train of thought. Tell me, how was your morning?";
+    } catch (aiErr) {
+      console.warn("Gemini Chat failed, utilizing gorgeous persona fallback simulation:", aiErr);
+      const randomIndex = Math.floor(Math.random() * fallbackList.length);
+      replyText = fallbackList[randomIndex];
+      isSimulated = true;
+    }
+
+    // 3. Persist the companion's response in database
+    await db.insert(messages).values({
+      userId: req.userDb.id,
+      matchId,
+      senderId: matchId,
+      text: replyText,
+    });
+
+    res.json({
+      text: replyText,
+      isSimulated,
+    });
+  } catch (error) {
+    console.error("Database chat processing failed:", error);
+    res.status(500).json({ error: "Failed to process dialogue chat message." });
+  }
+});
+
+// 6. Get saved compatibility assessment
+app.get("/api/compatibility/:matchId", requireAuth, async (req: AuthRequest, res) => {
+  const { matchId } = req.params;
+  if (!req.userDb) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const report = await db.select()
+      .from(compatibility)
+      .where(and(eq(compatibility.userId, req.userDb.id), eq(compatibility.matchId, matchId)));
+
+    if (report.length > 0) {
+      return res.json({
+        status: "success",
+        aiAnalysis: {
+          matchScore: report[0].matchScore,
+          summary: report[0].summary,
+          sharedStrengths: report[0].sharedStrengths,
+          potentialGrowthAreas: report[0].potentialGrowthAreas,
+          recommendedDates: report[0].recommendedDates,
+        }
+      });
+    }
+
+    res.json({ status: "success", aiAnalysis: null });
+  } catch (error) {
+    console.error("Failed to query compatibility reports:", error);
+    res.status(500).json({ error: "Failed to load compatibility reports" });
+  }
+});
+
+// 7. Analyze compatibility and save results persistently
+app.post("/api/analyze-compatibility", requireAuth, async (req: AuthRequest, res) => {
+  const { userAnswers, matchId } = req.body;
+  if (!req.userDb) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
   if (!matchId) {
     return res.status(400).json({ error: "matchId is required" });
   }
 
-  const personaContext = PERSONA_PROMPTS[matchId] || "You are a warm, kind mature dating companion for 50+ singles.";
-  const fallbackList = FALLBACK_RESPONSES[matchId] || ["How interesting! Please tell me more, my friend."];
-
+  // Find target companion
+  let targetMatch: any = null;
   try {
-    const ai = getGeminiClient();
-    if (!ai) {
-      // Return beautiful fallback response representing the persona to support immediate offline-first use
-      const randomIndex = Math.floor(Math.random() * fallbackList.length);
-      const chosenFallback = fallbackList[randomIndex];
-      // Simulate real typing delay
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      return res.json({
-        text: chosenFallback,
-        isSimulated: true
-      });
+    const companionsResult = await db.select().from(companions).where(eq(companions.id, matchId));
+    if (companionsResult.length > 0) {
+      targetMatch = companionsResult[0];
     }
-
-    // Format chat history for google genai
-    // Only pass last 8 messages to keep standard constraints and avoid token caps
-    const cleanHistory = history || [];
-    const formattedHistory = cleanHistory.slice(-8).map((msg: any) => {
-      return {
-        role: msg.senderId === "user" ? "user" : "model",
-        parts: [{ text: msg.text }]
-      };
-    });
-
-    const userContextStr = userProfile 
-      ? `\nUser Profile for matching reference (Do NOT reveal this data outright; use it to discover matching values if helpful): Age: ${userProfile.age}, Bio: "${userProfile.bio}", Interests: ${userProfile.interests?.join(", ")}.`
-      : "";
-
-    // Run generateContent with system instruction
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: [
-        ...formattedHistory,
-        { role: "user", parts: [{ text: cleanHistory[cleanHistory.length - 1]?.text || "Hello!" }] }
-      ],
-      config: {
-        systemInstruction: `${personaContext}${userContextStr}\nKeep response to at most 3 warm sentences. Support second-chance romance, friendly companionship, or warm travel sharing. Do NOT act like a generic AI or say you are an AI assistant. Speak directly as that person.`,
-        temperature: 0.82
-      }
-    });
-
-    res.json({
-      text: response.text || "I found myself thinking of the beauty of this day, but lost my train of thought. Tell me, how was your morning?",
-      isSimulated: false
-    });
-  } catch (error: any) {
-    console.error("Gemini Chat Error:", error);
-    // Graceful error fallback
-    const randomIndex = Math.floor(Math.random() * fallbackList.length);
-    res.json({
-      text: `${fallbackList[randomIndex]} (Warm custom persona simulation active)`,
-      isSimulated: true,
-      errorInfo: error.message
-    });
+  } catch (dbErr) {
+    console.warn("Failed to fetch companion from DB for quiz analysis, searching in fallback profiles:", dbErr);
   }
-});
 
-// Analyze compatibility based on "Next Chapter Compatibility Companion Quiz"
-app.post("/api/analyze-compatibility", async (req, res) => {
-  const { userAnswers, matchId } = req.body;
-
-  const targetMatch = MATCH_PROFILES.find(p => p.id === matchId);
   if (!targetMatch) {
-    return res.status(404).json({ error: "Match not found" });
+    targetMatch = MATCH_PROFILES.find(p => p.id === matchId);
+  }
+
+  if (!targetMatch) {
+    return res.status(404).json({ error: "Match companion profile not found" });
   }
 
   const userAnswersStr = Object.entries(userAnswers || {})
@@ -404,8 +578,8 @@ ${userAnswersStr}
 Name: ${targetMatch.name}
 Age: ${targetMatch.age}
 Bio: ${targetMatch.bio}
-Interests: ${targetMatch.interests.join(", ")}
-Values: ${targetMatch.values.join(", ")}
+Interests: ${Array.isArray(targetMatch.interests) ? targetMatch.interests.join(", ") : ""}
+Values: ${Array.isArray(targetMatch.values) ? targetMatch.values.join(", ") : ""}
 Theme: ${targetMatch.chapterTheme}
 
 Conduct a heartful, gorgeous, and respectful mature compatibility analysis (specifically aiming at loneliness relief, second-chance companionship, mutual hobbies and retirement style compatibility). 
@@ -418,34 +592,13 @@ Expose the response in JSON format. Use these exact structural fields:
   "recommendedDates": ["3 beautiful detailed dating ideas tailored for them (e.g. afternoon botanical picnics, classical chamber music night, sailing on low winds)"]
 }`;
 
+  let finalAnalysis: any = null;
+  let isSimulated = false;
+
   try {
     const ai = getGeminiClient();
     if (!ai) {
-      // Heartfelt smart simulated offline assessment to make sure user still gets beautiful feedback
-      const sampleStrengths = [
-        `Mutual appreciation for relaxed afternoons and shared interests of ${targetMatch.interests[0]}`,
-        "Shared life wisdom and prioritizing emotional authenticity over superficial expectations",
-        "A gorgeous alignment on slow-paced living and deep-seated intellectual curiosity"
-      ];
-      const sampleGrowth = [
-        `Integrating different retirement themes: User's preferences combined with ${targetMatch.name}'s love of ${targetMatch.interests[1]}`
-      ];
-      const sampleDates = [
-        `A slow Sunday breakfast in the botanical gardens followed by a stroll in a local museum discussing ${targetMatch.interests[0]}`,
-        `Listening to classic records or soft acoustics on ${targetMatch.name}'s backyard deck under early-evening lanterns`,
-        `A lovely pottery, painting, or gardening afternoon workshop where both can try something new together`
-      ];
-
-      return res.json({
-        aiAnalysis: {
-          matchScore: Math.floor(Math.random() * 15) + 84, // 84 to 98
-          summary: `${targetMatch.name} feels a wonderful soul-connection to you. Your thoughtful answers show a deep willingness to share genuine moments, slow walks, and high-quality conversation that matches their life values perfectly.`,
-          sharedStrengths: sampleStrengths,
-          potentialGrowthAreas: sampleGrowth,
-          recommendedDates: sampleDates
-        },
-        isSimulated: true
-      });
+      throw new Error("Gemini Client Offline or API Key Missing");
     }
 
     const response = await ai.models.generateContent({
@@ -468,30 +621,63 @@ Expose the response in JSON format. Use these exact structural fields:
       }
     });
 
-    const result = JSON.parse(response.text?.trim() || "{}");
-    res.json({
-      aiAnalysis: result,
-      isSimulated: false
-    });
-  } catch (error: any) {
-    console.error("Gemini Compatibility Analysis Error:", error);
-    // Graceful local simulated backup
-    res.json({
-      aiAnalysis: {
-        matchScore: 89,
-        summary: `Your shared lifestyle values beautifully interlock with ${targetMatch.name}'s values. There is deep mutual respect for quiet mornings, meaningful art, and nature walks that lay down the perfect path for a lovely next chapter together.`,
-        sharedStrengths: ["Kindness and supportive communication", "Vulnerability and readiness to love again", "Shared enjoyment of the simpler, beautiful moments in life"],
-        potentialGrowthAreas: ["Navigating geographical distances or adjusting to new physical routines together gently"],
-        recommendedDates: ["A leisurely afternoon at a historic bookstore coffee corner", "An warm botanical garden walkthrough followed by tea", "Hearing live classical string orchestra performance"]
-      },
-      isSimulated: true,
-      errorInfo: error.message
-    });
+    finalAnalysis = JSON.parse(response.text?.trim() || "{}");
+  } catch (err) {
+    console.warn("Compatibility analysis failed to generate, using simulated fallback:", err);
+    
+    const firstInterest = Array.isArray(targetMatch.interests) ? targetMatch.interests[0] : "walking";
+    const secondInterest = Array.isArray(targetMatch.interests) ? targetMatch.interests[1] || firstInterest : "reading";
+
+    const sampleStrengths = [
+      `Mutual appreciation for relaxed afternoons and shared interests of ${firstInterest}`,
+      "Shared life wisdom and prioritizing emotional authenticity over superficial expectations",
+      "A gorgeous alignment on slow-paced living and deep-seated intellectual curiosity"
+    ];
+    const sampleGrowth = [
+      `Integrating different retirement themes: User's preferences combined with ${targetMatch.name}'s love of ${secondInterest}`
+    ];
+    const sampleDates = [
+      `A slow Sunday breakfast in the botanical gardens followed by a stroll in a local museum discussing ${firstInterest}`,
+      `Listening to classic records or soft acoustics on ${targetMatch.name}'s backyard deck under early-evening lanterns`,
+      `A lovely pottery, painting, or gardening afternoon workshop where both can try something new together`
+    ];
+
+    finalAnalysis = {
+      matchScore: Math.floor(Math.random() * 15) + 84, // 84 to 98
+      summary: `${targetMatch.name} feels a wonderful soul-connection to you. Your thoughtful answers show a deep willingness to share genuine moments, slow walks, and high-quality conversation that matches their life values perfectly.`,
+      sharedStrengths: sampleStrengths,
+      potentialGrowthAreas: sampleGrowth,
+      recommendedDates: sampleDates
+    };
+    isSimulated = true;
   }
+
+  // Persistently save results inside compatibility table (Upsert)
+  try {
+    await db.delete(compatibility)
+      .where(and(eq(compatibility.userId, req.userDb.id), eq(compatibility.matchId, matchId)));
+
+    await db.insert(compatibility).values({
+      userId: req.userDb.id,
+      matchId,
+      matchScore: finalAnalysis.matchScore,
+      summary: finalAnalysis.summary,
+      sharedStrengths: finalAnalysis.sharedStrengths,
+      potentialGrowthAreas: finalAnalysis.potentialGrowthAreas,
+      recommendedDates: finalAnalysis.recommendedDates,
+    });
+  } catch (dbErr) {
+    console.error("Failed to persist compatibility report in PostgreSQL:", dbErr);
+  }
+
+  res.json({
+    aiAnalysis: finalAnalysis,
+    isSimulated
+  });
 });
 
-// Polish dating bio API using Gemini
-app.post("/api/generate-bio", async (req, res) => {
+// 8. Polish dating bio API using Gemini
+app.post("/api/generate-bio", requireAuth, async (req: AuthRequest, res) => {
   const { interests, age, goals, currentBio } = req.body;
 
   const prompt = `Write or polish a gorgeous, dignified, and heartwarming dating profile biography for a senior/mature individual (around age ${age || 60}) looking for their life's "next chapter".
@@ -508,12 +694,7 @@ Requirements:
   try {
     const ai = getGeminiClient();
     if (!ai) {
-      // Craft a lovely offline bio
-      const fallbackBio = `Life has been a wonderful journey, and I find myself entering this new chapter with a grateful heart and an open mind. At this stage, I cherish the beauty of small, deliberate moments—a warm cup of tea in the morning, a quiet walk surrounded by nature, and getting lost in a good book. I value sincerity, quiet intelligence, and genuine emotional warmth above all else. I am hoping to connect with a kind-hearted soul who wants to share these simple, beautiful routines, build a profound friendship, and together, write a peaceful, joyful next chapter.`;
-      return res.json({
-        polishedBio: fallbackBio,
-        isSimulated: true
-      });
+      throw new Error("Gemini offline");
     }
 
     const response = await ai.models.generateContent({
