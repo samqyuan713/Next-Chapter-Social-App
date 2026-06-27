@@ -1,0 +1,6 @@
+{
+  "name": "Next Chapter Dating",
+  "description": "An elegant and companion-focused dating app designed for mature singles entering their life's next beautiful chapter of connection and love.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
