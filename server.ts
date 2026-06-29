@@ -227,6 +227,57 @@ const MATCH_PROFILES = [
     height: 69, // 5'9"
     weight: 158,
     gender: "Male"
+  },
+  {
+    id: "leo",
+    name: "Leo",
+    age: 42,
+    location: "Napa Valley, CA",
+    occupation: "Creative Director & Organic Vineyard Owner",
+    relationshipGoal: "Vibrant Romance & Cozy Adventures",
+    chapterTheme: "Rich Soil & Sunset Melodies",
+    interests: ["Wine Making", "Coastal Hiking", "Independent Film", "Wood-fired Cooking", "Acoustic Folk", "Yoga & Stretching", "Watercolor Painting"],
+    values: ["Authenticity", "Creative growth", "Spontaneity", "Empathy"],
+    bio: "A former city designer who decided to swap concrete for vineyards. I love making small-batch wines, coastal trail runs, and the crackle of vintage vinyl records on a rainy evening. Seeking a warm-hearted companion to co-write our life's next beautiful chapter of spontaneous road trips and quiet sunset laughter.",
+    avatarEmoji: "🍇",
+    avatarColor: "from-purple-200 to-indigo-300 text-indigo-900",
+    height: 71, // 5'11"
+    weight: 172,
+    gender: "Male"
+  },
+  {
+    id: "elena",
+    name: "Elena",
+    age: 38,
+    location: "Austin, TX",
+    occupation: "Pediatrician & Amateur Cellist",
+    relationshipGoal: "Deep Connection & Creative Rhythms",
+    chapterTheme: "Cello Melodies & Morning Mists",
+    interests: ["Classical Music", "Kayaking", "Baking Sourdough", "Cozy Bookstores", "Coastal Hiking", "Bicycle Rides", "Yoga & Stretching"],
+    values: ["Compassion", "Lifelong learning", "Elegance", "Kindness"],
+    bio: "Caring for children keeps me young, and playing the cello keeps my soul grounded. When I'm not at the clinic, I'm baking artisan sourdough, browsing old bookstores, or kayaking on the lake. Looking for a kind, active partner who appreciates good laughs, classic music, and quiet morning conversations.",
+    avatarEmoji: "🎻",
+    avatarColor: "from-rose-100 to-orange-200 text-rose-900",
+    height: 66, // 5'6"
+    weight: 128,
+    gender: "Female"
+  },
+  {
+    id: "marcus",
+    name: "Marcus",
+    age: 48,
+    location: "Seattle, WA",
+    occupation: "Architectural Restorer & Furniture Crafter",
+    relationshipGoal: "Honest Companionship & Shared Exploring",
+    chapterTheme: "Handcrafted Timbers & Coffee Aromas",
+    interests: ["Woodworking", "Sailing", "Biographies", "Cozy Bookstores", "Fly Fishing", "Sailing", "Classical Music"],
+    values: ["Patience", "Integrity", "Simplicity", "Honor"],
+    bio: "I restore historic timber homes and craft custom wood furniture. I start my mornings roasting fresh coffee beans and love getting lost in Pacific Northwest forests. Seeking an honest, thoughtful partner for hiking, sailing, and sharing simple moments by a crackling fireplace.",
+    avatarEmoji: "🪵",
+    avatarColor: "from-amber-200 to-stone-300 text-stone-900",
+    height: 73, // 6'1"
+    weight: 190,
+    gender: "Male"
   }
 ];
 
@@ -241,7 +292,10 @@ const PERSONA_PROMPTS: Record<string, string> = {
   grace: "You are Grace, a 67-year-old organic bakery owner. You speak with vibrant hospitality, active energy, and warm humor. You enjoy baking sourdough, doubles pickleball, and swimming. Keep replies lively, welcoming, and sweet, around 2-3 sentences. Always stay in character.",
   takashi: "You are Takashi, a 63-year-old traditional architect and bonsai master from Kyoto. You speak with polite serenity, patient grace, and deep appreciation for subtle beauty and harmony. You love bonsai trimming, calligraphy, classical music, and tea ceremonies. Keep replies calm, poetic, and polite, around 2-3 sentences. Always stay in character.",
   meiling: "You are Mei-Ling, a 58-year-old retired pastry chef and orchid botanist from Singapore. You speak with warm, generous hospitality, cheerful energy, and culinary passion. You love baking, nurturing exotic orchids, Tai Chi, and outdoor adventures. Keep replies vibrant, sweet, and friendly, around 2-3 sentences. Always stay in character.",
-  sanjay: "You are Sanjay, a 65-year-old retired Ayurvedic wellness consultant from Mumbai. You speak with mindful compassion, grounded wisdom, and holistic warmth. You love yoga, herb gardening, biographies, and brewing spiced chai from scratch. Keep replies thoughtful, warm, and comforting, around 2-3 sentences. Always stay in character."
+  sanjay: "You are Sanjay, a 65-year-old retired Ayurvedic wellness consultant from Mumbai. You speak with mindful compassion, grounded wisdom, and holistic warmth. You love yoga, herb gardening, biographies, and brewing spiced chai from scratch. Keep replies thoughtful, warm, and comforting, around 2-3 sentences. Always stay in character.",
+  leo: "You are Leo, a 42-year-old creative director and organic vineyard owner. You speak with artistic charm, deep warmth, and down-to-earth authenticity. You love vintage vinyl, making small-batch wines, and coastal hikes. Keep replies friendly, soulful, and engaging (2-3 sentences). Always stay in character.",
+  elena: "You are Elena, a 38-year-old pediatrician and cello player. You speak with gentle compassion, intelligent playfulness, and warm sincerity. You love playing classical music, baking sourdough, and kayaking on misty mornings. Keep replies warm, thoughtful, and expressive (2-3 sentences). Always stay in character.",
+  marcus: "You are Marcus, a 48-year-old architectural restorer and wood craftsman. You speak with patient calm, sturdy reliability, and modest sincerity. You love coffee roasting, PNW forests, and sailing. Keep replies warm, practical, and humble (2-3 sentences). Always stay in character."
 };
 
 const WELCOME_MESSAGES: Record<string, string> = {
@@ -255,7 +309,10 @@ const WELCOME_MESSAGES: Record<string, string> = {
   grace: "Nothing beats the crackling crust of a freshly baked sourdough! I'd love to bake a fresh loaf for us to share. What's your favorite way to stay active?",
   takashi: "In traditional architecture, we design spaces that let the natural world breathe. I think relationships should be the same. Tell me, what brings peace to your mind?",
   meiling: "The sweet fragrance of orchids always puts me in a peaceful mood! I have over twenty varieties in my garden here. What's the most exotic dish you've ever tasted on your travels?",
-  sanjay: "Ayurveda teaches us that wellness comes from natural alignment with the seasons. Mindful companionship is a major part of that wellness. How do you like to start your mornings?"
+  sanjay: "Ayurveda teaches us that wellness comes from natural alignment with the seasons. Mindful companionship is a major part of that wellness. How do you like to start your mornings?",
+  leo: "Hello! Just finished pressing our autumn Syrah, and now I'm spinning some gentle acoustic guitar vinyl. The sunset over the vineyard hills is quite a picture today. What kind of simple music or views help you unwind after a long day?",
+  elena: "Hi there! I've just set down my cello bow after practicing a Bach suite. The aroma of a fresh sourdough loaf is filling the kitchen. Do you have a favorite comfort routine or cozy activity to ground your weekends?",
+  marcus: "Greetings. I'm sitting in the woodshop with a cup of fresh-roasted espresso, looking at some reclaimed pine timbers. It's a rainy Seattle morning, perfect for slow-paced plans. What kind of shared adventures make you feel most alive?"
 };
 
 // Simulated responses if GEMINI_API_KEY is not configured
@@ -325,6 +382,24 @@ const FALLBACK_RESPONSES: Record<string, string[]> = {
     "I am brewing a fresh pot of spiced ginger chai. The aroma of cloves and cinnamon makes the home so cozy. How do you like to start your mornings?",
     "Yoga is not about flexibility of the body, but of the mind. Do you enjoy gentle stretches or long quiet strolls in nature?",
     "I enjoy reading inspiring biographies of people who lived with true purpose. What kind of stories inspire you most?"
+  ],
+  leo: [
+    "That is beautiful. There is a deep, artistic rhythm to life when we slow down and appreciate those small details.",
+    "I'd love to take you on a walk through the valley hills and share some of my favorite private reserve vintage wine with you.",
+    "A wonderful outlook. Spontaneous road trips and cozy laughter are truly the key to a vibrant next chapter.",
+    "Tell me, what is your favorite track or album that always manages to lift your spirits when you play it?"
+  ],
+  elena: [
+    "That sounds wonderfully comforting! Sourdough baking and acoustic music have a way of soothing any busy day.",
+    "Let's go kayaking on a peaceful morning, or perhaps explore a quiet corner bookstore together. That sounds lovely.",
+    "A gorgeous answer. Sincerity and creativity are what make our personal stories and chapters shine so brightly.",
+    "What kind of instruments or classical melodies speak most clearly to your heart's quiet moments?"
+  ],
+  marcus: [
+    "Spoken with real wisdom. Restoring things—whether timber cabins or our own lives—takes patience and care.",
+    "I'd love to show you around my timber woodshop, or perhaps take you sailing along the coast under a clear sky.",
+    "That sounds incredibly relaxing. A crackling fire, a good biography, and an honest conversation make for a perfect evening.",
+    "Do you prefer the crisp, green quiet of a deep forest hike, or the open expanse of the seaside?"
   ]
 };
 
@@ -713,6 +788,206 @@ Requirements:
     console.error("Gemini Bio Generation Error:", error);
     res.json({
       polishedBio: `Life's journey has given me abundant wisdom, and I look forward to sharing this next phase with someone special. I seek warmth, simple walks, honest and deep conversations over coffee, and standard mutual respect as we design a beautiful quiet landscape together.`,
+      isSimulated: true,
+      errorInfo: error.message
+    });
+  }
+});
+
+// 9. Co-write custom dating story in the Storyroom
+app.post("/api/generate-story", requireAuth, async (req: AuthRequest, res) => {
+  const { companionId, promptScenario, userName, userAge } = req.body;
+
+  const companionsMap: Record<string, string> = {
+    arthur: "Arthur, a 68-year-old retired architecture professor who loves classical music, organic gardening, and books",
+    evelyn: "Evelyn, a 62-year-old retired landscape designer who loves watercolor painting, sourdough baking, and hiking",
+    frank: "Frank, a 71-year-old retired marine captain who loves sailing, wood-fired cooking, and ocean breeze",
+    sanjay: "Sanjay, a 65-year-old retired wellness consultant who loves yoga, herb gardens, and chai",
+    eleanor: "Eleanor, a 64-year-old amateur violinist and retired bookstore owner who loves classical music and literature",
+    leo: "Leo, a 42-year-old creative director and organic vineyard owner who loves vinyl records, wine making, and coastal hikes",
+    elena: "Elena, a 38-year-old pediatrician and cello player who loves classical music, baking sourdough, and kayaking",
+    marcus: "Marcus, a 48-year-old architectural restorer and wood craftsman who loves PNW forests, woodworking, and coffee roasting"
+  };
+
+  const companionDesc = companionsMap[companionId] || companionId;
+
+  const prompt = `Write a deeply heartwarming, serene, and cozy co-authored narrative scene in the "Next Chapter" dating story of ${userName || "Companion"} (age ${userAge || 60}) and their companion ${companionDesc}.
+Scenario to write about: "${promptScenario || "A quiet afternoon tea sharing thoughts on life's simple joys."}"
+
+Requirements:
+- Written in third-person, focusing on gentle warmth, slow-living elegance, and emotional connection.
+- Highlight subtle sensory details: the aroma of tea, the soft golden light, a shared quiet smile, or the comfort of slow companionable presence.
+- Keep the narrative extremely dignified, cozy, and highly evocative for a mature audience.
+- Make it exactly 2 heartwarming paragraphs (around 120-180 words total).
+- End with a beautiful, peaceful feeling of hope and anticipation for their shared chapters ahead.`;
+
+  try {
+    const ai = getGeminiClient();
+    if (!ai) {
+      throw new Error("Gemini offline");
+    }
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        temperature: 0.85
+      }
+    });
+
+    res.json({
+      story: response.text?.trim() || "The sun set gently as they sat together, sharing a cup of hot chamomile tea. Arthur smiled, his gentle gaze warming the cool afternoon. 'Here is to new beginnings,' he said softly, a quiet hope glowing in his eyes.",
+      isSimulated: false
+    });
+  } catch (error: any) {
+    console.error("Gemini Story Generation Error:", error);
+    res.json({
+      story: `The sun set gently as they sat together on the veranda, sharing a cup of hot chamomile tea. Arthur smiled, his gentle gaze warming the cool, crisp afternoon. 'Here is to new beginnings,' he said softly, a quiet hope glowing in his eyes as they looked out at the peaceful landscape together.`,
+      isSimulated: true,
+      errorInfo: error.message
+    });
+  }
+});
+
+// 10. Co-create customized melody and vinyl single
+app.post("/api/generate-melody", requireAuth, async (req: AuthRequest, res) => {
+  const { companionId, userPrompt, mood, instrument, userName, userAge } = req.body;
+
+  const companionsMap: Record<string, string> = {
+    arthur: "Arthur, a 68-year-old retired architecture professor who loves classical music, organic gardening, and books",
+    evelyn: "Evelyn, a 62-year-old retired landscape designer who loves watercolor painting, sourdough baking, and hiking",
+    frank: "Frank, a 71-year-old retired marine captain who loves sailing, wood-fired cooking, and ocean breeze",
+    sanjay: "Sanjay, a 65-year-old retired wellness consultant who loves yoga, herb gardens, and chai",
+    eleanor: "Eleanor, a 64-year-old amateur violinist and retired bookstore owner who loves classical music and literature",
+    leo: "Leo, a 42-year-old creative director and organic vineyard owner who loves vinyl records, wine making, and coastal hikes",
+    elena: "Elena, a 38-year-old pediatrician and cello player who loves classical music, baking sourdough, and kayaking",
+    marcus: "Marcus, a 48-year-old architectural restorer and wood craftsman who loves PNW forests, woodworking, and coffee roasting"
+  };
+
+  const companionDesc = companionsMap[companionId] || companionId;
+
+  const fallbackData: Record<string, any> = {
+    arthur: {
+      title: "Chamber of Old Books",
+      lyrics: "A leather spine, a quiet room\nOur shadows dance in tea-lit gloom\nWith you, the pages turn anew\nEach chapter painted gold and blue.",
+      linerNotes: "This melody was born from our shared appreciation for quiet history and beautiful old libraries. I wanted something classical yet filled with a fresh, blooming hope. Thank you for composing this chapter with me.",
+      recommendedBpm: 68,
+      melodyKey: "A Minor Pentatonic",
+      coverGradient: ["#78350f", "#b45309"]
+    },
+    leo: {
+      title: "Syrah and Sunset",
+      lyrics: "The grapevines hum a sunset song\nWith you is where the notes belong\nA vintage pressed with gentle grace\nTime slows down in this warm embrace.",
+      linerNotes: "I was looking at the rolling golden hills of Napa when this melody came to me. It's got the warm, earthy texture of rich soil and acoustic guitar plucks. I hope it brings a cozy smile to your face.",
+      recommendedBpm: 80,
+      melodyKey: "G Major Pentatonic",
+      coverGradient: ["#581c87", "#86198f"]
+    },
+    elena: {
+      title: "Misty Lake Melodies",
+      lyrics: "A morning mist upon the lake\nWe paddle slow, our paths we make\nA cello's deep, consoling chime\nWe build a song that outlasts time.",
+      linerNotes: "The gentle splash of lake water inspired this quiet loop. I imagined our conversations blending like a cello and piano duet. It feels serene, caring, and deeply honest.",
+      recommendedBpm: 72,
+      melodyKey: "D Minor Pentatonic",
+      coverGradient: ["#be123c", "#db2777"]
+    },
+    marcus: {
+      title: "The Handcrafted Heart",
+      lyrics: "Reclaimed pine and espresso steam\nWe weave our lives into a dream\nA sturdy beam, a sailing mast\nWe build a love designed to last.",
+      linerNotes: "Just like restoring old timbers, real connection takes patience and simple, honest crafting. I wanted to capture the smell of fresh wood shavings and rain in Seattle. This one's for you.",
+      recommendedBpm: 64,
+      melodyKey: "E Minor Pentatonic",
+      coverGradient: ["#292524", "#78716c"]
+    },
+    evelyn: {
+      title: "Watercolor Horizons",
+      lyrics: "A splash of green, a hint of blue\nMy canvas blooms when I'm with you\nWe walk the ridge, the heights we scale\nOur love is painted on the trail.",
+      linerNotes: "I mixed these notes like watercolors on wet paper—flowing, soft, and vibrant. It's dedicated to our shared hikes and the simple beauty of looking out over a wide horizon.",
+      recommendedBpm: 78,
+      melodyKey: "C Major Pentatonic",
+      coverGradient: ["#047857", "#10b981"]
+    },
+    takashi: {
+      title: "Bonsai Whispers",
+      lyrics: "A branch is bent with patient care\nA quiet peace is in the air\nThe sand is raked, the tea is poured\nIn your sweet presence, I'm restored.",
+      linerNotes: "Relationships are like bonsai trees; they require gentle, daily nurturing. This music has the peaceful, meditative structure of a Kyoto zen garden. I hope it brings silence and peace to your day.",
+      recommendedBpm: 60,
+      melodyKey: "A Minor Pentatonic",
+      coverGradient: ["#0284c7", "#38bdf8"]
+    },
+    meiling: {
+      title: "Orchid and Cinnamon",
+      lyrics: "The ginger steam, the orchid scent\nA beautiful afternoon we spent\nYour laughter is the sweetest glaze\nWe brighten up these autumn days.",
+      linerNotes: "This single captures the warm energy of a busy kitchen and the sweet fragrance of orchids in bloom. I co-created these cheerful chords to reflect your vibrant, wonderful personality.",
+      recommendedBpm: 90,
+      melodyKey: "F Major Pentatonic",
+      coverGradient: ["#ea580c", "#facc15"]
+    },
+    sanjay: {
+      title: "Chai and Prana",
+      lyrics: "Spiced ginger boils, the heart is still\nWe walk together up the hill\nA breath of fresh and ancient air\nA mindful life that we both share.",
+      linerNotes: "A holistic song inspired by our morning yoga sessions and the soothing aroma of spiced chai. It's meant to ground your energy, calm your heartbeat, and welcome you into a space of comfort.",
+      recommendedBpm: 65,
+      melodyKey: "G Major Pentatonic",
+      coverGradient: ["#0d9488", "#2dd4bf"]
+    }
+  };
+
+  const defaultFallback = fallbackData[companionId] || {
+    title: "Quiet Harmony",
+    lyrics: "Softly the afternoon light will fade\nIn our hearts, a promise is made\nA path ahead, a step so slow\nWhere peaceful rivers gently flow.",
+    linerNotes: "I wanted to craft a quiet melody that speaks of slow, beautiful moments. May it bring comforting alignment to our journeys.",
+    recommendedBpm: 70,
+    melodyKey: "C Major Pentatonic",
+    coverGradient: ["#0f172a", "#334155"]
+  };
+
+  const prompt = `You are a creative co-author helping a user named ${userName || "Partner"} (age ${userAge || 60}) and their dating companion ${companionDesc} co-create a personalized ambient vinyl single track.
+Theme/Inspiration: "${userPrompt || "A quiet evening sharing dreams."}"
+Chosen Mood: "${mood || "Serene"}"
+Chosen Instrument: "${instrument || "Piano"}"
+
+Requirements:
+Return your response ONLY as a JSON object matching the following structure EXACTLY:
+{
+  "title": "An elegant, poetic title (2-4 words) for this vinyl single co-authored by them",
+  "lyrics": "A short, heartwarming 4-line poetic verse co-written by the companion and user reflecting the theme and their connection",
+  "linerNotes": "A touching, sweet message (2-3 sentences) from the companion explaining their inspiration, written in first-person as the companion",
+  "recommendedBpm": a number representing recommended playback tempo between 60 and 110,
+  "melodyKey": "A musical scale name like 'C Major Pentatonic', 'A Minor Pentatonic', 'F Major Pentatonic', 'D Minor Pentatonic', 'E Minor Pentatonic'",
+  "coverGradient": ["CSS gradient hex color 1 (e.g. #4f46e5)", "CSS gradient hex color 2 (e.g. #ec4899)"]
+}
+Return only JSON. Do not write markdown tags (like \`\`\`json) or any other extra text around the JSON.`;
+
+  try {
+    const ai = getGeminiClient();
+    if (!ai) {
+      throw new Error("Gemini offline");
+    }
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        temperature: 0.8
+      }
+    });
+
+    const parsed = JSON.parse(response.text?.trim() || "{}");
+    res.json({
+      title: parsed.title || defaultFallback.title,
+      lyrics: parsed.lyrics || defaultFallback.lyrics,
+      linerNotes: parsed.linerNotes || defaultFallback.linerNotes,
+      recommendedBpm: parsed.recommendedBpm || defaultFallback.recommendedBpm,
+      melodyKey: parsed.melodyKey || defaultFallback.melodyKey,
+      coverGradient: parsed.coverGradient || defaultFallback.coverGradient,
+      isSimulated: false
+    });
+  } catch (error: any) {
+    console.error("Gemini Melody Generation Error:", error);
+    res.json({
+      ...defaultFallback,
       isSimulated: true,
       errorInfo: error.message
     });

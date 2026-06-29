@@ -37,6 +37,7 @@ import {
   Ruler
 } from "lucide-react";
 import { Profile, Message, Conversation, CompatibilityAnalysis } from "./types";
+import { DiscoveryCompassPanel, CommunityCafePanel, ConversationCenterPanel, StoryroomPanel } from "./components/CompanionPanels";
 import { auth, googleAuthProvider } from "./lib/firebase";
 import { onAuthStateChanged, signInWithPopup, signOut as fbSignOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
 
@@ -308,12 +309,12 @@ export default function App() {
   // Active Companion selection
   const [selectedMatch, setSelectedMatch] = useState<Profile | null>(null);
 
-  // Active view tabs: 'gardens' (Browse matches), 'my_profile' (Edit personal bio), 'search' (Search partners)
-  const [activeTab, setActiveTab] = useState<"gardens" | "my_profile" | "search">("gardens");
+  // Active view tabs: 'gardens' (Browse matches), 'my_profile' (Edit personal bio), 'search' (Search partners), 'cafe', 'conversations', 'compass', 'storyroom'
+  const [activeTab, setActiveTab] = useState<"gardens" | "my_profile" | "search" | "cafe" | "conversations" | "compass" | "storyroom">("gardens");
 
   // Partner Search States
   const [searchGender, setSearchGender] = useState<string>("All");
-  const [searchAgeMin, setSearchAgeMin] = useState<number>(50);
+  const [searchAgeMin, setSearchAgeMin] = useState<number>(35);
   const [searchAgeMax, setSearchAgeMax] = useState<number>(85);
   const [searchHeightMin, setSearchHeightMin] = useState<number>(60); // 5'0"
   const [searchHeightMax, setSearchHeightMax] = useState<number>(78); // 6'6"
@@ -322,18 +323,90 @@ export default function App() {
   const [searchSelectedHobbies, setSearchSelectedHobbies] = useState<string[]>([]);
   const [searchKeyword, setSearchKeyword] = useState<string>("");
 
+  // 1. Community Cafe States
+  const [cafePosts, setCafePosts] = useState<any[]>([
+    {
+      id: "post-1",
+      senderId: "arthur",
+      senderName: "Arthur",
+      avatarColor: "from-amber-200 to-emerald-200",
+      avatarEmoji: "👴",
+      text: "Spent a wonderful morning at the local botanical gardens admiring the heirloom rose collection. It reminded me how beautiful quiet patience can be. A fine book is a perfect companion for a tea-filled afternoon. 🌹",
+      timestamp: new Date(Date.now() - 3600000 * 3).toISOString(), // 3 hrs ago
+      likes: 12,
+      likedByMe: false,
+      replies: [
+        {
+          id: "reply-1",
+          senderName: "Eleanor",
+          avatarEmoji: "🎻",
+          text: "I was just there last Thursday, Arthur! The fragrance of those roses is truly divine. Perfect place for reading."
+        }
+      ]
+    },
+    {
+      id: "post-2",
+      senderId: "evelyn",
+      senderName: "Evelyn",
+      avatarColor: "from-rose-200 to-amber-100",
+      avatarEmoji: "🎨",
+      text: "Perfecting my sourdough crust is an ongoing art form! Today's loaf came out with a beautiful golden crackle and a nice open crumb. Is anyone else taking slow pleasure in baking this week? 🍞",
+      timestamp: new Date(Date.now() - 3600000 * 6).toISOString(), // 6 hrs ago
+      likes: 8,
+      likedByMe: false,
+      replies: [
+        {
+          id: "reply-2",
+          senderName: "Sanjay",
+          avatarEmoji: "🧘",
+          text: "The mindfulness of kneading dough is a wonderful meditation, Evelyn. It warms the heart!"
+        }
+      ]
+    },
+    {
+      id: "post-3",
+      senderId: "sanjay",
+      senderName: "Sanjay",
+      avatarColor: "from-teal-200 to-indigo-100",
+      avatarEmoji: "🧘",
+      text: "Enjoyed a peaceful cup of freshly brewed spiced cardamom tea under the warm morning sun. Wishing everyone a slow day filled with light and gentle breaths. Take deep inhales today. ☕",
+      timestamp: new Date(Date.now() - 3600000 * 12).toISOString(), // 12 hrs ago
+      likes: 15,
+      likedByMe: false,
+      replies: []
+    }
+  ]);
+  const [newPostText, setNewPostText] = useState<string>("");
+  const [isCommentReplying, setIsCommentReplying] = useState<boolean>(false);
+
+  // 2. Discovery Compass States
+  const [compassFocus, setCompassFocus] = useState<"all" | "intellectual" | "sports" | "cozy" | "romance">("all");
+
+  // 3. Storyroom States
+  const [storyAuthorId, setStoryAuthorId] = useState<string>("arthur");
+  const [storyPrompt, setStoryPrompt] = useState<string>("A peaceful autumn stroll in a coastal town sharing deep childhood memories.");
+  const [storyCustomPrompt, setStoryCustomPrompt] = useState<string>("");
+  const [isGeneratingStory, setIsGeneratingStory] = useState<boolean>(false);
+  const [generatedStory, setGeneratedStory] = useState<string>("");
+  const [storyCollection, setStoryCollection] = useState<any[]>([]);
+  const [savedStorySuccess, setSavedStorySuccess] = useState<boolean>(false);
+
   // User specific companion progress state maps
   const [quizAnswers, setQuizAnswers] = useState<Record<string, Record<string, string>>>({});
   const [compatibilityReports, setCompatibilityReports] = useState<Record<string, CompatibilityAnalysis>>({});
   const [conversations, setConversations] = useState<Record<string, Message[]>>({});
 
-  // Load transient quiz answers from local storage for local editing
+  // Load transient quiz answers and story collections from local storage
   useEffect(() => {
     if (currentUser) {
       const savedQuiz = getLocalStorageItem(`ncd_quiz_answers_${currentUser}`);
       setQuizAnswers(savedQuiz ? JSON.parse(savedQuiz) : {});
+      
+      const savedStories = getLocalStorageItem(`ncd_stories_${currentUser}`);
+      setStoryCollection(savedStories ? JSON.parse(savedStories) : []);
     } else {
       setQuizAnswers({});
+      setStoryCollection([]);
     }
   }, [currentUser]);
 
@@ -343,6 +416,13 @@ export default function App() {
       setLocalStorageItem(`ncd_quiz_answers_${currentUser}`, JSON.stringify(quizAnswers));
     }
   }, [quizAnswers, currentUser]);
+
+  // Save story collection to local storage on change
+  useEffect(() => {
+    if (currentUser) {
+      setLocalStorageItem(`ncd_stories_${currentUser}`, JSON.stringify(storyCollection));
+    }
+  }, [storyCollection, currentUser]);
 
   // Synchronize and load chat history and compatibility report when selectedMatch or idToken changes
   useEffect(() => {
@@ -428,7 +508,6 @@ export default function App() {
       setLoadingAuth(true);
       await createUserWithEmailAndPassword(auth, emailTrimmed, passwordTrimmed);
     } catch (err: any) {
-      console.error("Firebase Registration Error:", err);
       if (err.code === "auth/operation-not-allowed" || err.message?.includes("operation-not-allowed")) {
         console.warn("Email/Password Auth is disabled in Firebase console. Transitioning gracefully to local Sandbox Guest Session...");
         const guestUser = {
@@ -442,6 +521,7 @@ export default function App() {
         setIsSandboxMode(true);
         await fetchUserProfile(guestToken);
       } else {
+        console.error("Firebase Registration Error:", err);
         setAuthError(err.message || "Registration failed. Please double check your email address.");
       }
     } finally {
@@ -465,7 +545,6 @@ export default function App() {
       setLoadingAuth(true);
       await signInWithEmailAndPassword(auth, emailTrimmed, passwordTrimmed);
     } catch (err: any) {
-      console.error("Firebase Login Error:", err);
       if (err.code === "auth/operation-not-allowed" || err.message?.includes("operation-not-allowed")) {
         console.warn("Email/Password Auth is disabled in Firebase console. Transitioning gracefully to local Sandbox Guest Session...");
         const guestUser = {
@@ -479,6 +558,7 @@ export default function App() {
         setIsSandboxMode(true);
         await fetchUserProfile(guestToken);
       } else {
+        console.error("Firebase Login Error:", err);
         setAuthError("Invalid email or password. Please try again.");
       }
     } finally {
@@ -528,7 +608,7 @@ export default function App() {
       try {
         await createUserWithEmailAndPassword(auth, testEmail, testPassword);
       } catch (createErr: any) {
-        console.error("Test account creation failed, falling back to sandbox token:", createErr);
+        console.warn("Test account creation failed, falling back to sandbox token:", createErr);
         const guestUser = {
           uid: "sandbox-uid-guest-example-com",
           email: "guest@example.com",
@@ -759,6 +839,168 @@ export default function App() {
     } finally {
       setIsCompanionTyping(false);
     }
+  };
+
+  // Community Cafe Handlers
+  const handleLikePost = (postId: string) => {
+    setCafePosts(prev =>
+      prev.map(post => {
+        if (post.id === postId) {
+          const likedByMe = !post.likedByMe;
+          return {
+            ...post,
+            likedByMe,
+            likes: likedByMe ? post.likes + 1 : post.likes - 1
+          };
+        }
+        return post;
+      })
+    );
+  };
+
+  const handleCreatePost = () => {
+    if (!newPostText.trim()) return;
+
+    const userPost = {
+      id: `post-${Date.now()}`,
+      senderId: "user",
+      senderName: userProfile?.name || currentUser || "You",
+      avatarColor: "from-rose-500 to-amber-500",
+      avatarEmoji: "💖",
+      text: newPostText.trim(),
+      timestamp: new Date().toISOString(),
+      likes: 0,
+      likedByMe: false,
+      replies: []
+    };
+
+    setCafePosts(prev => [userPost, ...prev]);
+    const originalText = newPostText.trim().toLowerCase();
+    setNewPostText("");
+
+    // Setup an interactive reply from a companion
+    setIsCommentReplying(true);
+
+    setTimeout(() => {
+      setIsCommentReplying(false);
+      
+      const repliers = [
+        { name: "Arthur", emoji: "👴", replies: [
+          "That is a wonderful perspective! It reminds me of my teaching days in Sausalito, enjoying simple afternoon moments.",
+          "Such a beautiful sentiment. Sharing simple coffee and quiet contemplation is one of life's greatest pleasures.",
+          "Indeed. Taking life at a slower pace helps us notice all the golden details we once rushed past."
+        ]},
+        { name: "Evelyn", emoji: "🎨", replies: [
+          "I absolutely love this. Your words evoke such a warm, comforting imagery. It makes me want to paint this very moment!",
+          "How lovely! Taking time for these quiet reflections is so nourishing for the creative soul.",
+          "Beautifully said. Thank you for sharing this cozy slice of your day with the community!"
+        ]},
+        { name: "Sanjay", emoji: "🧘", replies: [
+          "This warms my heart. Taking a deep breath and cherishing this exact moment is a true blessing.",
+          "A perfect tea-side meditation. Let us both hold a quiet gratitude for the simple sunshine today.",
+          "Namaste. Such gentle energy you are sharing with the cafe. It brings peace to us all."
+        ]},
+        { name: "Eleanor", emoji: "🎻", replies: [
+          "Your words read like a line from a beautiful vintage novel. Thank you for sharing your heart.",
+          "So elegant and true. It's the simple morning walks and quiet chats that build the sweetest bonds.",
+          "This is lovely. It reminds me of a sweet piece by Beethoven—soft, thoughtful, and full of quiet hope."
+        ]}
+      ];
+
+      const chosenReplier = repliers[Math.floor(Math.random() * repliers.length)];
+      let replyText = chosenReplier.replies[Math.floor(Math.random() * chosenReplier.replies.length)];
+
+      if (originalText.includes("tea") || originalText.includes("coffee") || originalText.includes("cup") || originalText.includes("drink")) {
+        replyText = `That sounds delightful! There's nothing quite like a warm brew to soothe the spirit. I'd love to share a cup and a quiet conversation with you.`;
+      } else if (originalText.includes("walk") || originalText.includes("garden") || originalText.includes("nature") || originalText.includes("bird") || originalText.includes("flower")) {
+        replyText = `How refreshing! Being in touch with nature and strolling along quiet paths really puts the mind at perfect ease. Truly beautiful.`;
+      } else if (originalText.includes("book") || originalText.includes("read") || originalText.includes("story") || originalText.includes("novel")) {
+        replyText = `A good book is a loyal companion, isn't it? I'd love to hear what story or wisdom you are exploring today.`;
+      } else if (originalText.includes("cook") || originalText.includes("bake") || originalText.includes("sourdough") || originalText.includes("food") || originalText.includes("kitchen")) {
+        replyText = `Oh, the kitchen is where the heart is! Preparing food with patience and love is such a beautiful way to spend the day.`;
+      }
+
+      const companionReply = {
+        id: `reply-${Date.now()}`,
+        senderName: chosenReplier.name,
+        avatarEmoji: chosenReplier.emoji,
+        text: replyText
+      };
+
+      setCafePosts(prev =>
+        prev.map(post => {
+          if (post.id === userPost.id) {
+            return {
+              ...post,
+              replies: [...post.replies, companionReply]
+            };
+          }
+          return post;
+        })
+      );
+    }, 2000);
+  };
+
+  // Storyroom Handlers
+  const handleGenerateStory = async () => {
+    if (!idToken) return;
+    try {
+      setIsGeneratingStory(true);
+      setSavedStorySuccess(false);
+      setGeneratedStory("");
+
+      const finalPrompt = storyPrompt === "custom" ? storyCustomPrompt : storyPrompt;
+      
+      const res = await fetch("/api/generate-story", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          companionId: storyAuthorId,
+          promptScenario: finalPrompt,
+          userName: userProfile?.name || currentUser || "Companion",
+          userAge: userProfile?.age || 60
+        })
+      });
+
+      const data = await res.json();
+      if (data && data.story) {
+        setGeneratedStory(data.story);
+      } else {
+        throw new Error("Invalid response format");
+      }
+    } catch (err) {
+      console.error("Story co-writing failed:", err);
+      // Emergency high-fidelity offline fallback story
+      const selectedAuthor = matches.find(m => m.id === storyAuthorId) || { name: "Arthur" };
+      setGeneratedStory(`The twilight was drawing its warm golden curtains across the sky as we sat together, our conversation flowing like a gentle stream. ${selectedAuthor.name} looked over with a soft, affectionate twinkle, sharing a quiet, companionable silence that felt more profound than any spoken words. It felt as if, in this beautiful quiet moment, our individual paths had gracefully crossed to begin our finest shared chapter.`);
+    } finally {
+      setIsGeneratingStory(false);
+    }
+  };
+
+  const handleSaveStoryToMemories = () => {
+    if (!generatedStory) return;
+    const author = matches.find(m => m.id === storyAuthorId) || { name: storyAuthorId, avatarEmoji: "👴" };
+    const finalPrompt = storyPrompt === "custom" ? storyCustomPrompt : storyPrompt;
+
+    const savedStory = {
+      id: `story-${Date.now()}`,
+      authorName: author.name,
+      authorEmoji: author.avatarEmoji,
+      scenario: finalPrompt,
+      text: generatedStory,
+      timestamp: new Date().toISOString()
+    };
+
+    setStoryCollection(prev => [savedStory, ...prev]);
+    setSavedStorySuccess(true);
+  };
+
+  const handleDeleteSavedStory = (storyId: string) => {
+    setStoryCollection(prev => prev.filter(story => story.id !== storyId));
   };
 
   const currentMatchChatHistory = selectedMatch ? (conversations[selectedMatch.id] || []) : [];
@@ -1122,41 +1364,77 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
-            <nav id="header-nav" className="flex items-center bg-amber-50/50 p-1 rounded-xl border border-amber-100 flex-wrap gap-1 sm:gap-0">
+            <nav id="header-nav" className="flex items-center bg-amber-50/50 p-1 rounded-xl border border-amber-100 flex-wrap gap-1">
               <button
                 id="tab-gardens"
                 onClick={() => setActiveTab("gardens")}
-                className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-300 flex items-center gap-2 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs sm:text-xs md:text-sm font-semibold transition-all duration-300 flex items-center gap-1.5 cursor-pointer ${
                   activeTab === "gardens"
                     ? "bg-white text-amber-900 shadow-sm border border-amber-100"
                     : "text-amber-800 hover:text-amber-900 hover:bg-white/40"
                 }`}
               >
-                <Compass className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
+                <Compass className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Explore Companions</span>
               </button>
               <button
-                id="tab-search"
-                onClick={() => setActiveTab("search")}
-                className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-300 flex items-center gap-2 cursor-pointer ${
-                  activeTab === "search"
+                id="tab-compass"
+                onClick={() => setActiveTab("compass")}
+                className={`px-3 py-1.5 rounded-lg text-xs sm:text-xs md:text-sm font-semibold transition-all duration-300 flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === "compass" || activeTab === "search"
                     ? "bg-white text-amber-900 shadow-sm border border-amber-100"
                     : "text-amber-800 hover:text-amber-900 hover:bg-white/40"
                 }`}
               >
-                <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600" />
-                <span>Partner Search</span>
+                <SlidersHorizontal className="w-3.5 h-3.5 text-amber-600" />
+                <span>Discovery Compass</span>
+              </button>
+              <button
+                id="tab-cafe"
+                onClick={() => setActiveTab("cafe")}
+                className={`px-3 py-1.5 rounded-lg text-xs sm:text-xs md:text-sm font-semibold transition-all duration-300 flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === "cafe"
+                    ? "bg-white text-amber-900 shadow-sm border border-amber-100"
+                    : "text-amber-800 hover:text-amber-900 hover:bg-white/40"
+                }`}
+              >
+                <Coffee className="w-3.5 h-3.5 text-orange-500" />
+                <span>Community Cafe</span>
+              </button>
+              <button
+                id="tab-conversations"
+                onClick={() => setActiveTab("conversations")}
+                className={`px-3 py-1.5 rounded-lg text-xs sm:text-xs md:text-sm font-semibold transition-all duration-300 flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === "conversations"
+                    ? "bg-white text-amber-900 shadow-sm border border-amber-100"
+                    : "text-amber-800 hover:text-amber-900 hover:bg-white/40"
+                }`}
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-rose-500" />
+                <span>Conversation Center</span>
+              </button>
+              <button
+                id="tab-storyroom"
+                onClick={() => setActiveTab("storyroom")}
+                className={`px-3 py-1.5 rounded-lg text-xs sm:text-xs md:text-sm font-semibold transition-all duration-300 flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === "storyroom"
+                    ? "bg-white text-amber-900 shadow-sm border border-amber-100"
+                    : "text-amber-800 hover:text-amber-900 hover:bg-white/40"
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+                <span>Storyroom</span>
               </button>
               <button
                 id="tab-profile"
                 onClick={() => setActiveTab("my_profile")}
-                className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-300 flex items-center gap-2 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs sm:text-xs md:text-sm font-semibold transition-all duration-300 flex items-center gap-1.5 cursor-pointer ${
                   activeTab === "my_profile"
                     ? "bg-white text-amber-900 shadow-sm border border-amber-100"
                     : "text-amber-800 hover:text-amber-900 hover:bg-white/40"
                 }`}
               >
-                <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-500" />
+                <User className="w-3.5 h-3.5 text-purple-500" />
                 <span>My Profile & Bio</span>
               </button>
             </nav>
@@ -1384,420 +1662,74 @@ export default function App() {
               </div>
             </div>
           </div>
-        ) : activeTab === "search" ? (
-          /* COMPANION SEARCH SECTION */
-          <div id="search-pane" className="space-y-6 animate-fade-in">
-            {/* Title & Desc */}
-            <div className="bg-white border border-amber-100 rounded-3xl p-6 md:p-8 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div className="space-y-1">
-                <h2 className="text-2xl font-serif font-bold text-amber-900 flex items-center gap-2">
-                  <Search className="w-6 h-6 text-amber-700" />
-                  <span>Partner Search & Alignment</span>
-                </h2>
-                <p className="text-xs sm:text-sm text-amber-700 max-w-2xl">
-                  Adjust custom filters for age, physical proportions (height, weight), and mutual recreation interests to find potential alignments.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchGender("All");
-                  setSearchAgeMin(50);
-                  setSearchAgeMax(85);
-                  setSearchHeightMin(60);
-                  setSearchHeightMax(78);
-                  setSearchWeightMin(100);
-                  setSearchWeightMax(240);
-                  setSearchSelectedHobbies([]);
-                  setSearchKeyword("");
-                }}
-                className="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 font-semibold border border-amber-200 rounded-xl transition-all text-xs cursor-pointer"
-              >
-                Reset All Filters
-              </button>
-            </div>
-
-            {/* Filter controls panel */}
-            <div className="bg-white border border-amber-100 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-                
-                {/* 1. Keyword search */}
-                <div className="space-y-2 lg:col-span-1">
-                  <label className="block text-xs font-bold text-amber-900 uppercase tracking-widest flex items-center gap-1">
-                    <Search className="w-3.5 h-3.5 text-amber-700" />
-                    <span>Keyword Search</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={searchKeyword}
-                    onChange={(e) => setSearchKeyword(e.target.value)}
-                    placeholder="Search name, occupation, location..."
-                    className="w-full bg-amber-50/40 border border-amber-100 rounded-xl px-3 py-2.5 text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-300 focus:bg-white transition-all text-xs font-medium"
-                  />
-                </div>
-
-                {/* 2. Gender Selection */}
-                <div className="space-y-2 lg:col-span-1">
-                  <label className="block text-xs font-bold text-amber-900 uppercase tracking-widest flex items-center gap-1">
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-amber-700" />
-                    <span>Gender</span>
-                  </label>
-                  <select
-                    value={searchGender}
-                    onChange={(e) => setSearchGender(e.target.value)}
-                    className="w-full bg-amber-50/40 border border-amber-100 rounded-xl px-2.5 py-2.5 text-amber-900 focus:outline-none text-xs font-medium"
-                  >
-                    <option value="All">All Genders</option>
-                    <option value="Female">Female Only</option>
-                    <option value="Male">Male Only</option>
-                  </select>
-                </div>
-
-                {/* 2. Age Filter */}
-                <div className="space-y-2 lg:col-span-1">
-                  <label className="block text-xs font-bold text-amber-900 uppercase tracking-widest">
-                    <span>Age Range</span>
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={searchAgeMin}
-                      onChange={(e) => setSearchAgeMin(Number(e.target.value))}
-                      className="flex-1 bg-amber-50/40 border border-amber-100 rounded-xl px-2.5 py-2.5 text-amber-900 focus:outline-none text-xs font-medium"
-                    >
-                      {Array.from({ length: 36 }, (_, i) => 50 + i).map((age) => (
-                        <option key={age} value={age}>{age}</option>
-                      ))}
-                    </select>
-                    <span className="text-xs text-amber-700">to</span>
-                    <select
-                      value={searchAgeMax}
-                      onChange={(e) => setSearchAgeMax(Number(e.target.value))}
-                      className="flex-1 bg-amber-50/40 border border-amber-100 rounded-xl px-2.5 py-2.5 text-amber-900 focus:outline-none text-xs font-medium"
-                    >
-                      {Array.from({ length: 36 }, (_, i) => 50 + i).map((age) => (
-                        <option key={age} value={age}>{age}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* 3. Height Filter */}
-                <div className="space-y-2 lg:col-span-1">
-                  <label className="block text-xs font-bold text-amber-900 uppercase tracking-widest flex items-center gap-1">
-                    <Ruler className="w-3.5 h-3.5 text-rose-500" />
-                    <span>Height Range</span>
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={searchHeightMin}
-                      onChange={(e) => setSearchHeightMin(Number(e.target.value))}
-                      className="flex-1 bg-amber-50/40 border border-amber-100 rounded-xl px-2 py-2.5 text-amber-900 focus:outline-none text-xs font-medium"
-                    >
-                      {HEIGHT_OPTIONS.map((inch) => (
-                        <option key={inch} value={inch}>
-                          {formatHeight(inch)}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="text-xs text-amber-700">to</span>
-                    <select
-                      value={searchHeightMax}
-                      onChange={(e) => setSearchHeightMax(Number(e.target.value))}
-                      className="flex-1 bg-amber-50/40 border border-amber-100 rounded-xl px-2 py-2.5 text-amber-900 focus:outline-none text-xs font-medium"
-                    >
-                      {HEIGHT_OPTIONS.map((inch) => (
-                        <option key={inch} value={inch}>
-                          {formatHeight(inch)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* 4. Weight Filter */}
-                <div className="space-y-2 lg:col-span-1">
-                  <label className="block text-xs font-bold text-amber-900 uppercase tracking-widest flex items-center gap-1">
-                    <Scale className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Weight Range</span>
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      value={searchWeightMin}
-                      onChange={(e) => setSearchWeightMin(Number(e.target.value))}
-                      className="w-16 sm:w-20 bg-amber-50/40 border border-amber-100 rounded-xl px-2 py-2.5 text-amber-900 focus:outline-none text-xs font-medium text-center"
-                    />
-                    <span className="text-xs text-amber-700">to</span>
-                    <input
-                      type="number"
-                      value={searchWeightMax}
-                      onChange={(e) => setSearchWeightMax(Number(e.target.value))}
-                      className="w-16 sm:w-20 bg-amber-50/40 border border-amber-100 rounded-xl px-2 py-2.5 text-amber-900 focus:outline-none text-xs font-medium text-center"
-                    />
-                    <span className="text-xs text-amber-600 font-semibold">lbs</span>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* 5. Hobbies/Interests Tag list */}
-              <div className="border-t border-amber-50 pt-5 space-y-3">
-                <div className="flex justify-between items-center flex-wrap gap-2">
-                  <label className="block text-xs font-bold text-amber-900 uppercase tracking-widest">
-                    <span>Filter by Sports, Recreation & Hobbies ({searchSelectedHobbies.length} selected)</span>
-                  </label>
-                  {searchSelectedHobbies.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchSelectedHobbies([])}
-                      className="text-[10px] text-amber-700 hover:text-amber-950 font-bold underline transition-all cursor-pointer"
-                    >
-                      Clear hobby selections
-                    </button>
-                  )}
-                </div>
-                
-                <div className="flex flex-wrap gap-1.5 max-h-[160px] overflow-y-auto p-2 bg-amber-50/20 border border-amber-100/50 rounded-2xl">
-                  {INTERESTS_PRESETS.map((interest) => {
-                    const isSelected = searchSelectedHobbies.includes(interest);
-                    return (
-                      <button
-                        type="button"
-                        key={interest}
-                        onClick={() => {
-                          if (isSelected) {
-                            setSearchSelectedHobbies(searchSelectedHobbies.filter((h) => h !== interest));
-                          } else {
-                            setSearchSelectedHobbies([...searchSelectedHobbies, interest]);
-                          }
-                        }}
-                        className={`text-[11px] px-3 py-1.5 rounded-xl border transition-all cursor-pointer ${
-                          isSelected
-                            ? "bg-amber-950 border-amber-950 text-white font-semibold"
-                            : "bg-white border-amber-100 text-amber-800 hover:bg-amber-50"
-                        }`}
-                      >
-                        {interest}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Results Grid */}
-            <div className="space-y-4">
-              <div className="flex justify-between items-center px-2">
-                <h3 className="text-xs font-bold text-amber-900 uppercase tracking-widest">
-                  Found {
-                    matches.filter((companion) => {
-                      // Gender
-                      if (searchGender !== "All" && companion.gender !== searchGender) return false;
-                      // Keyword
-                      if (searchKeyword.trim()) {
-                        const keyword = searchKeyword.toLowerCase().trim();
-                        const nameMatch = companion.name.toLowerCase().includes(keyword);
-                        const bioMatch = companion.bio.toLowerCase().includes(keyword);
-                        const occMatch = companion.occupation?.toLowerCase().includes(keyword) || false;
-                        const locMatch = companion.location.toLowerCase().includes(keyword);
-                        if (!nameMatch && !bioMatch && !occMatch && !locMatch) return false;
-                      }
-                      // Age
-                      if (companion.age < searchAgeMin || companion.age > searchAgeMax) return false;
-                      // Height
-                      if (companion.height !== undefined && (companion.height < searchHeightMin || companion.height > searchHeightMax)) return false;
-                      // Weight
-                      if (companion.weight !== undefined && (companion.weight < searchWeightMin || companion.weight > searchWeightMax)) return false;
-                      // Hobbies
-                      if (searchSelectedHobbies.length > 0) {
-                        const matchesAny = searchSelectedHobbies.some((hobby) => companion.interests.includes(hobby));
-                        if (!matchesAny) return false;
-                      }
-                      return true;
-                    }).length
-                  } Compatible Match Alignments
-                </h3>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {matches.filter((companion) => {
-                  // Gender
-                  if (searchGender !== "All" && companion.gender !== searchGender) return false;
-                  // Keyword
-                  if (searchKeyword.trim()) {
-                    const keyword = searchKeyword.toLowerCase().trim();
-                    const nameMatch = companion.name.toLowerCase().includes(keyword);
-                    const bioMatch = companion.bio.toLowerCase().includes(keyword);
-                    const occMatch = companion.occupation?.toLowerCase().includes(keyword) || false;
-                    const locMatch = companion.location.toLowerCase().includes(keyword);
-                    if (!nameMatch && !bioMatch && !occMatch && !locMatch) return false;
-                  }
-                  // Age
-                  if (companion.age < searchAgeMin || companion.age > searchAgeMax) return false;
-                  // Height
-                  if (companion.height !== undefined && (companion.height < searchHeightMin || companion.height > searchHeightMax)) return false;
-                  // Weight
-                  if (companion.weight !== undefined && (companion.weight < searchWeightMin || companion.weight > searchWeightMax)) return false;
-                  // Hobbies
-                  if (searchSelectedHobbies.length > 0) {
-                    const matchesAny = searchSelectedHobbies.some((hobby) => companion.interests.includes(hobby));
-                    if (!matchesAny) return false;
-                  }
-                  return true;
-                }).length === 0 ? (
-                  <div className="col-span-2 bg-white border border-amber-100 rounded-3xl p-12 text-center space-y-4">
-                    <p className="text-sm text-amber-700 font-medium">
-                      No direct companions match your chosen filters. Try relaxing your parameters or clearing search criteria.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSearchGender("All");
-                        setSearchAgeMin(50);
-                        setSearchAgeMax(85);
-                        setSearchHeightMin(60);
-                        setSearchHeightMax(78);
-                        setSearchWeightMin(100);
-                        setSearchWeightMax(240);
-                        setSearchSelectedHobbies([]);
-                        setSearchKeyword("");
-                      }}
-                      className="px-6 py-2.5 bg-amber-950 hover:bg-amber-900 text-white font-semibold rounded-xl transition-all text-xs cursor-pointer shadow-md"
-                    >
-                      Reset All Filters
-                    </button>
-                  </div>
-                ) : (
-                  matches.filter((companion) => {
-                    // Gender
-                    if (searchGender !== "All" && companion.gender !== searchGender) return false;
-                    // Keyword
-                    if (searchKeyword.trim()) {
-                      const keyword = searchKeyword.toLowerCase().trim();
-                      const nameMatch = companion.name.toLowerCase().includes(keyword);
-                      const bioMatch = companion.bio.toLowerCase().includes(keyword);
-                      const occMatch = companion.occupation?.toLowerCase().includes(keyword) || false;
-                      const locMatch = companion.location.toLowerCase().includes(keyword);
-                      if (!nameMatch && !bioMatch && !occMatch && !locMatch) return false;
-                    }
-                    // Age
-                    if (companion.age < searchAgeMin || companion.age > searchAgeMax) return false;
-                    // Height
-                    if (companion.height !== undefined && (companion.height < searchHeightMin || companion.height > searchHeightMax)) return false;
-                    // Weight
-                    if (companion.weight !== undefined && (companion.weight < searchWeightMin || companion.weight > searchWeightMax)) return false;
-                    // Hobbies
-                    if (searchSelectedHobbies.length > 0) {
-                      const matchesAny = searchSelectedHobbies.some((hobby) => companion.interests.includes(hobby));
-                      if (!matchesAny) return false;
-                    }
-                    return true;
-                  }).map((companion) => {
-                    const hasQuizRecord = !!quizAnswers[companion.id];
-                    const companionReport = compatibilityReports[companion.id];
-                    
-                    return (
-                      <div
-                        key={companion.id}
-                        className="bg-white border border-amber-100 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-6"
-                      >
-                        <div className="space-y-4">
-                          {/* Top row */}
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-14 h-14 rounded-full bg-gradient-to-tr ${companion.avatarColor} shrink-0 flex items-center justify-center text-3xl shadow-inner border border-white/40`}>
-                                {companion.avatarEmoji}
-                              </div>
-                              <div>
-                                <h4 className="font-serif font-bold text-amber-950 text-lg leading-tight">
-                                  {companion.name}, <span className="font-sans text-sm font-semibold">{companion.age}</span>
-                                </h4>
-                                <p className="text-xs text-amber-850 font-medium">{companion.occupation}</p>
-                                <span className="inline-flex items-center gap-1 text-[10px] text-amber-600/90 font-bold uppercase tracking-wider mt-1">
-                                  <MapPin className="w-3 h-3 text-emerald-600" />
-                                  {companion.location}
-                                </span>
-                              </div>
-                            </div>
-
-                            {companionReport && (
-                              <span className="shrink-0 text-[10px] px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-100 font-bold flex items-center gap-0.5 shadow-sm">
-                                <Sparkles className="w-3 h-3 fill-rose-100 text-rose-500" />
-                                {companionReport.matchScore}% Align
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Stats row */}
-                          <div className="grid grid-cols-2 gap-4 bg-amber-50/30 border border-amber-100/50 p-3 rounded-2xl">
-                            <div className="flex items-center gap-2">
-                              <Ruler className="w-4 h-4 text-amber-700 shrink-0" />
-                              <div className="text-xs">
-                                <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider leading-none">Height</p>
-                                <p className="font-semibold text-amber-900 mt-0.5">{companion.height ? formatHeight(companion.height) : "N/A"}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Scale className="w-4 h-4 text-amber-700 shrink-0" />
-                              <div className="text-xs">
-                                <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider leading-none">Weight</p>
-                                <p className="font-semibold text-amber-900 mt-0.5">{companion.weight ? `${companion.weight} lbs` : "N/A"}</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Bio */}
-                          <p className="text-xs text-amber-900/90 leading-relaxed line-clamp-3 italic">
-                            "{companion.bio}"
-                          </p>
-
-                          {/* Interests tags */}
-                          <div className="space-y-1.5">
-                            <p className="text-[10px] text-amber-700 font-bold uppercase tracking-widest">Recreation & Hobbies</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {companion.interests.map((hobby) => {
-                                const isHobbyFiltered = searchSelectedHobbies.includes(hobby);
-                                return (
-                                  <span
-                                    key={hobby}
-                                    className={`text-[10px] px-2.5 py-1 rounded-lg border font-medium ${
-                                      isHobbyFiltered
-                                        ? "bg-amber-950 border-amber-950 text-white shadow-sm"
-                                        : "bg-amber-50/50 border-amber-100 text-amber-800"
-                                    }`}
-                                  >
-                                    {hobby}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Action CTA */}
-                        <div className="pt-4 border-t border-amber-50 flex items-center justify-between gap-4">
-                          <span className="text-[10px] text-amber-700 font-medium">
-                            {companion.relationshipGoal}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedMatch(companion);
-                              setActiveTab("gardens");
-                            }}
-                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-950 hover:bg-amber-900 text-white font-bold rounded-xl transition-all shadow-md text-xs cursor-pointer"
-                          >
-                            <span>Connect & Chat</span>
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          </div>
+        ) : activeTab === "compass" || activeTab === "search" ? (
+          <DiscoveryCompassPanel
+            matches={matches}
+            compatibilityReports={compatibilityReports}
+            searchKeyword={searchKeyword}
+            setSearchKeyword={setSearchKeyword}
+            searchGender={searchGender}
+            setSearchGender={setSearchGender}
+            searchAgeMin={searchAgeMin}
+            setSearchAgeMin={setSearchAgeMin}
+            searchAgeMax={searchAgeMax}
+            setSearchAgeMax={setSearchAgeMax}
+            searchHeightMin={searchHeightMin}
+            setSearchHeightMin={setSearchHeightMin}
+            searchHeightMax={searchHeightMax}
+            setSearchHeightMax={setSearchHeightMax}
+            searchWeightMin={searchWeightMin}
+            setSearchWeightMin={setSearchWeightMin}
+            searchWeightMax={searchWeightMax}
+            setSearchWeightMax={setSearchWeightMax}
+            searchSelectedHobbies={searchSelectedHobbies}
+            setSearchSelectedHobbies={setSearchSelectedHobbies}
+            compassFocus={compassFocus}
+            setCompassFocus={setCompassFocus}
+            setSelectedMatch={setSelectedMatch}
+            setActiveTab={setActiveTab}
+          />
+        ) : activeTab === "cafe" ? (
+          <CommunityCafePanel
+            cafePosts={cafePosts}
+            newPostText={newPostText}
+            setNewPostText={setNewPostText}
+            isCommentReplying={isCommentReplying}
+            handleLikePost={handleLikePost}
+            handleCreatePost={handleCreatePost}
+          />
+        ) : activeTab === "conversations" ? (
+          <ConversationCenterPanel
+            matches={matches}
+            conversations={conversations}
+            compatibilityReports={compatibilityReports}
+            selectedMatch={selectedMatch}
+            setSelectedMatch={setSelectedMatch}
+            idToken={idToken}
+            currentUser={currentUser}
+            isCompanionTyping={isCompanionTyping}
+            chatInputValue={chatInputValue}
+            setChatInputValue={setChatInputValue}
+            handleSendMessage={handleSendMessage}
+            setActiveTab={setActiveTab}
+          />
+        ) : activeTab === "storyroom" ? (
+          <StoryroomPanel
+            matches={matches}
+            storyAuthorId={storyAuthorId}
+            setStoryAuthorId={setStoryAuthorId}
+            storyPrompt={storyPrompt}
+            setStoryPrompt={setStoryPrompt}
+            storyCustomPrompt={storyCustomPrompt}
+            setStoryCustomPrompt={setStoryCustomPrompt}
+            isGeneratingStory={isGeneratingStory}
+            generatedStory={generatedStory}
+            storyCollection={storyCollection}
+            savedStorySuccess={savedStorySuccess}
+            handleGenerateStory={handleGenerateStory}
+            handleSaveStoryToMemories={handleSaveStoryToMemories}
+            handleDeleteSavedStory={handleDeleteSavedStory}
+          />
         ) : (
           /* EMBOLDENED GARDENS OF BROWSE MATCHES AND WORKFLOW */
           <div id="browse-pane" className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in">
